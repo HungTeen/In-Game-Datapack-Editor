@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "hungteen.htlib.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "htlib.refmap.json",
+  "mixins": [
+    "MixinEntity",
+    "MixinCollisionGetter",
+    "MixinDismountHelper",
+    "MixinProjectileUtil"
+  ],
+  "client": [
+  ],
+  "minVersion": "0.8.4"
+}
