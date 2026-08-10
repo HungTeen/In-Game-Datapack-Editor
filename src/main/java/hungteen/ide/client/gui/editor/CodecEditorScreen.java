@@ -2,7 +2,7 @@ package hungteen.ide.client.gui.editor;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import hungteen.htlib.common.network.NetworkHandler;
+import hungteen.ide.common.network.IDENetworkHandler;
 import hungteen.ide.common.network.RequestSchemaPacket;
 import hungteen.ide.common.network.SaveDataPacket;
 import net.minecraft.client.Minecraft;
@@ -166,7 +166,7 @@ public class CodecEditorScreen extends Screen {
         this.selected = name;
         this.schema = null;
         this.formRoot = null;
-        NetworkHandler.sendToServer(new RequestSchemaPacket(name));
+        IDENetworkHandler.sendToServer(new RequestSchemaPacket(name));
         status = "请求 " + name + " schema...";
         rebuildControls();
     }
@@ -190,7 +190,7 @@ public class CodecEditorScreen extends Screen {
         if (!path.endsWith(".json")) {
             path = path + ".json";
         }
-        NetworkHandler.sendToServer(new SaveDataPacket(selected, path, json));
+        IDENetworkHandler.sendToServer(new SaveDataPacket(selected, path, json));
         status = "保存请求已发送: " + path;
     }
 

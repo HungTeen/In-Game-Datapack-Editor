@@ -3,6 +3,8 @@ package hungteen.ide.client.gui.editor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import hungteen.ide.common.codec.parser.SchemaKeys;
+import hungteen.ide.common.codec.parser.SchemaType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,8 +17,12 @@ import java.util.regex.Pattern;
  * <p>与 {@link EditorFormNode} 不同，这里只展示"json 包含哪些字段"，不做编辑。
  * UNION（dispatch）节点提供类型循环按钮，选中 type 后展开对应分支的字段。</p>
  *
- * <p>每一行由多个彩色片段组成：字段名（白）、必填/可选标记（红/灰）、类型（浅灰）、
- * 注册表引用（蓝）、约束条件（黄）、默认值（绿）、枚举取值（紫）。</p>
+ * <p>行内<b>只显示字段名</b>；类型、必填、范围、默认值、枚举、注册表等全部放在
+ * 悬浮提示里展示。容器节点行首有 {@code [-]}/{@code [+]}} 折叠按钮，
+ * 子树的起始/结束用垂直参考线连接。</p>
+ *
+ * <p>类型判断基于 {@link SchemaType} 枚举（服务端序列化名一致），布局/配色统一走
+ * {@link ViewerStyle}，schema JSON 键名走 {@link SchemaKeys}。</p>
  *
  * @author PangTeen
  * @program: HTLib
@@ -24,24 +30,21 @@ import java.util.regex.Pattern;
  **/
 public class ViewerNode {
 
-    private static final int ROW_HEIGHT = 14;
-    private static final int TYPE_BUTTON_WIDTH = 140;
+    // ---- 结构标签 ----
+    private static final String ELEMENT_LABEL = "元素";
+    private static final String KEY_LABEL = "键";
+    private static final String VALUE_LABEL = "值";
+    private static final String UNION_FALLBACK_LABEL = "多态";
+    private static final String VARIANT_FALLBACK_PREFIX = "分支";
+    private static final String DEFAULT_VARIANT_KEY = "type";
 
-    // 片段配色
-    private static final int COLOR_NAME = 0xFFFFFF;
-    private static final int COLOR_TYPE = 0xD0D0D0;
-    private static final int COLOR_REQUIRED = 0xFF6B6B;
-    private static final int COLOR_OPTIONAL = 0x9E9E9E;
-    private static final int COLOR_CONSTRAINT = 0xFFD54F;
-    private static final int COLOR_DEFAULT = 0x7CFC7C;
-    private static final int COLOR_REGISTRY = 0x6ECBFF;
-    private static final int COLOR_ENUM = 0xD4A9FF;
+    // ---- 提示内容限制 ----
+    /** 悬浮提示里的枚举上限。 */
+    private static final int TOOLTIP_ENUM_SHOWN = 20;
+    /** 悬浮提示文本上限。 */
+    private static final int MAX_TOOLTIP_TEXT = 240;
 
-    /** 约束文本过长时截断，避免超出屏幕。 */
-    private static final int MAX_CONSTRAINT_TEXT = 64;
-    /** 枚举最多展示个数。 */
-    private static final int MAX_ENUM_SHOWN = 6;
-
+    // ---- 约束字符串解析 ----
     private static final Pattern RANGE = Pattern.compile("^Range\\[min=(.*), max=(.*)]$");
     private static final Pattern MIN = Pattern.compile("^Min\\[value=(.*)]$");
     private static final Pattern MAX = Pattern.compile("^Max\\[value=(.*)]$");
@@ -49,11 +52,13 @@ public class ViewerNode {
     private static final Pattern SIZE = Pattern.compile("^Size\\[min=(\\d+), max=(\\d+)]$");
 
     private final JsonObject schema;
-    /** 字段元信息（required / default / path），根节点与变体为 null。 */
+    /** 字段元信息（required / default / path），根节点、元素与变体为 null。 */
     private final JsonObject fieldMeta;
     private final String label;
     private final int depth;
     private final List<ViewerNode> children = new ArrayList<>();
+
+    private boolean collapsed = false;
 
     // UNION
     private final List<String> unionNames = new ArrayList<>();
@@ -78,42 +83,43 @@ public class ViewerNode {
     }
 
     private void init() {
-        String type = type();
-        switch (type) {
-            case "RECORD" -> {
-                if (!schema.has("fields")) break;
-                for (JsonElement f : schema.getAsJsonArray("fields")) {
+        switch (type()) {
+            case RECORD -> {
+                if (!schema.has(SchemaKeys.FIELDS)) break;
+                for (JsonElement f : schema.getAsJsonArray(SchemaKeys.FIELDS)) {
                     JsonObject field = f.getAsJsonObject();
-                    String name = field.get("name").getAsString();
-                    JsonObject fieldSchema = field.getAsJsonObject("schema");
+                    String name = field.get(SchemaKeys.NAME).getAsString();
+                    JsonObject fieldSchema = field.getAsJsonObject(SchemaKeys.SCHEMA);
                     children.add(new ViewerNode(fieldSchema, field, name, depth + 1));
                 }
             }
-            case "LIST", "SET" -> {
-                if (schema.has("element")) {
-                    children.add(new ViewerNode(schema.getAsJsonObject("element"), "元素", depth + 1));
+            case LIST, SET -> {
+                if (schema.has(SchemaKeys.ELEMENT)) {
+                    addElementChild(schema.getAsJsonObject(SchemaKeys.ELEMENT));
                 }
             }
-            case "MAP" -> {
-                if (schema.has("key")) {
-                    children.add(new ViewerNode(schema.getAsJsonObject("key"), "键", depth + 1));
+            case MAP -> {
+                if (schema.has(SchemaKeys.KEY)) {
+                    children.add(new ViewerNode(schema.getAsJsonObject(SchemaKeys.KEY), null, KEY_LABEL, depth + 1));
                 }
-                if (schema.has("value")) {
-                    children.add(new ViewerNode(schema.getAsJsonObject("value"), "值", depth + 1));
-                }
-            }
-            case "OPTIONAL" -> {
-                if (schema.has("element")) {
-                    children.add(new ViewerNode(schema.getAsJsonObject("element"), "元素", depth + 1));
+                if (schema.has(SchemaKeys.VALUE)) {
+                    addElementChild(schema.getAsJsonObject(SchemaKeys.VALUE));
                 }
             }
-            case "UNION", "EITHER" -> {
-                variantKey = schema.has("variantKey") ? schema.get("variantKey").getAsString() : "type";
-                if (schema.has("variants")) {
-                    JsonArray variants = schema.getAsJsonArray("variants");
+            case OPTIONAL -> {
+                if (schema.has(SchemaKeys.ELEMENT)) {
+                    addElementChild(schema.getAsJsonObject(SchemaKeys.ELEMENT));
+                }
+            }
+            case UNION, EITHER -> {
+                variantKey = schema.has(SchemaKeys.VARIANT_KEY)
+                    ? schema.get(SchemaKeys.VARIANT_KEY).getAsString() : DEFAULT_VARIANT_KEY;
+                if (schema.has(SchemaKeys.VARIANTS)) {
+                    JsonArray variants = schema.getAsJsonArray(SchemaKeys.VARIANTS);
                     for (JsonElement v : variants) {
                         JsonObject vo = v.getAsJsonObject();
-                        unionNames.add(vo.has("name") ? vo.get("name").getAsString() : ("分支" + unionNames.size()));
+                        unionNames.add(vo.has(SchemaKeys.NAME) ? vo.get(SchemaKeys.NAME).getAsString()
+                            : (VARIANT_FALLBACK_PREFIX + unionNames.size()));
                     }
                 }
                 selectVariant(0);
@@ -123,10 +129,32 @@ public class ViewerNode {
         }
     }
 
+    /**
+     * 添加一个"元素/值"子节点。
+     *
+     * <p>若元素是结构型（RECORD / LIST / MAP / ...），直接<b>内联</b>到当前节点
+     * （空标签、同级缩进），避免出现"元素 RECORD"这类冗余中间行和多余的折叠层级；
+     * 标量元素则保留"元素"标签行。</p>
+     */
+    private void addElementChild(JsonObject elementSchema) {
+        if (isStructural(typeOf(elementSchema))) {
+            children.add(new ViewerNode(elementSchema, null, "", depth));
+        } else {
+            children.add(new ViewerNode(elementSchema, null, ELEMENT_LABEL, depth + 1));
+        }
+    }
+
+    private static boolean isStructural(SchemaType type) {
+        return switch (type) {
+            case RECORD, LIST, SET, MAP, OPTIONAL, UNION, EITHER -> true;
+            default -> false;
+        };
+    }
+
     /** 选中某个 UNION 分支。 */
     public void selectVariant(int index) {
-        if (schema == null || !schema.has("variants")) return;
-        JsonArray variants = schema.getAsJsonArray("variants");
+        if (schema == null || !schema.has(SchemaKeys.VARIANTS)) return;
+        JsonArray variants = schema.getAsJsonArray(SchemaKeys.VARIANTS);
         if (variants.size() == 0) return;
         unionIndex = Math.max(0, Math.min(index, variants.size() - 1));
         selectedVariant = new ViewerNode(variants.get(unionIndex).getAsJsonObject(), "", depth + 1);
@@ -138,144 +166,210 @@ public class ViewerNode {
 
     /** 渲染字段树，返回下一个可用 y。 */
     public int render(CodecViewerScreen screen, int x, int y, int width) {
-        String type = type();
-        int indent = x + depth * 10;
-        int labelWidth = Math.max(40, width - depth * 10 - TYPE_BUTTON_WIDTH - 10);
+        SchemaType type = type();
+        int indent = x + depth * ViewerStyle.INDENT;
+        int labelWidth = Math.max(ViewerStyle.MIN_LABEL_WIDTH,
+            width - depth * ViewerStyle.INDENT - ViewerStyle.TYPE_BUTTON_WIDTH
+                - ViewerStyle.TOGGLE_WIDTH - ViewerStyle.TYPE_BUTTON_GAP);
 
         switch (type) {
-            case "UNION", "EITHER" -> {
-                List<Seg> segs = new ArrayList<>();
-                segs.add(new Seg(label.isEmpty() ? "多态" : label, COLOR_NAME));
-                segs.add(new Seg("（分派键: " + variantKey + "）", COLOR_TYPE));
-                drawLine(screen, indent, y, segs);
-                if (!unionNames.isEmpty()) {
-                    screen.addCycleButton(indent + labelWidth, y, TYPE_BUTTON_WIDTH, unionNames, unionIndex, idx -> {
-                        selectVariant(idx);
-                        screen.rebuild();
-                    });
+            case UNION, EITHER -> {
+                int rowY = y;
+                List<Seg> segs = List.of(new Seg(label.isEmpty() ? UNION_FALLBACK_LABEL : label, ViewerStyle.COLOR_TEXT));
+                int endX = drawLine(screen, indent + ViewerStyle.TOGGLE_WIDTH + ViewerStyle.TOGGLE_GAP, rowY, segs,
+                    screen.isRowInView(rowY));
+                if (screen.isRowFullyVisible(rowY)) {
+                    screen.addToggleButton(indent, rowY, ViewerStyle.TOGGLE_WIDTH, collapsed ? "+" : "-",
+                        () -> toggle(screen));
+                    if (!unionNames.isEmpty()) {
+                        screen.addCycleButton(indent + labelWidth, rowY, ViewerStyle.TYPE_BUTTON_WIDTH, unionNames,
+                            unionIndex, idx -> {
+                                selectVariant(idx);
+                                screen.rebuild();
+                            });
+                    }
+                    screen.addTooltipRow(indent, rowY,
+                        Math.max(endX, indent + labelWidth + ViewerStyle.TYPE_BUTTON_WIDTH) - indent, fullLine());
                 }
-                y += ROW_HEIGHT;
-                if (selectedVariant != null) {
+                y += ViewerStyle.ROW_HEIGHT;
+                if (!collapsed && selectedVariant != null) {
                     y = selectedVariant.render(screen, x, y, width);
+                    if (screen.isRowInView(rowY)) {
+                        screen.addGuideLine(indent + ViewerStyle.TOGGLE_WIDTH + 1,
+                            rowY + ViewerStyle.ROW_HEIGHT / 2, y - ViewerStyle.ROW_HEIGHT / 2);
+                    }
                 }
                 return y;
             }
-            case "RECORD" -> {
+            case RECORD -> {
+                int headerY = -1;
                 if (!label.isEmpty()) {
-                    drawLine(screen, indent, y, describeSegments());
-                    y += ROW_HEIGHT;
+                    headerY = y;
+                    int endX = drawLine(screen, indent + ViewerStyle.TOGGLE_WIDTH + ViewerStyle.TOGGLE_GAP, headerY,
+                        describeSegments(), screen.isRowInView(headerY));
+                    if (screen.isRowFullyVisible(headerY)) {
+                        screen.addToggleButton(indent, headerY, ViewerStyle.TOGGLE_WIDTH, collapsed ? "+" : "-",
+                            () -> toggle(screen));
+                        screen.addTooltipRow(indent, headerY, endX - indent, fullLine());
+                    }
+                    y += ViewerStyle.ROW_HEIGHT;
                 }
-                for (ViewerNode child : children) {
-                    y = child.render(screen, x, y, width);
+                if (!collapsed) {
+                    for (ViewerNode child : children) {
+                        y = child.render(screen, x, y, width);
+                    }
+                    if (headerY >= 0 && !children.isEmpty() && screen.isRowInView(headerY)) {
+                        screen.addGuideLine(indent + ViewerStyle.TOGGLE_WIDTH + 1,
+                            headerY + ViewerStyle.ROW_HEIGHT / 2, y - ViewerStyle.ROW_HEIGHT / 2);
+                    }
                 }
                 return y;
             }
-            case "LIST", "SET", "OPTIONAL", "MAP" -> {
-                drawLine(screen, indent, y, describeSegments());
-                y += ROW_HEIGHT;
-                for (ViewerNode child : children) {
-                    y = child.render(screen, x, y, width);
+            case LIST, SET, OPTIONAL, MAP -> {
+                int rowY = y;
+                int endX = drawLine(screen, indent + ViewerStyle.TOGGLE_WIDTH + ViewerStyle.TOGGLE_GAP, rowY,
+                    describeSegments(), screen.isRowInView(rowY));
+                if (screen.isRowFullyVisible(rowY)) {
+                    screen.addToggleButton(indent, rowY, ViewerStyle.TOGGLE_WIDTH, collapsed ? "+" : "-",
+                        () -> toggle(screen));
+                    screen.addTooltipRow(indent, rowY, endX - indent, fullLine());
+                }
+                y += ViewerStyle.ROW_HEIGHT;
+                if (!collapsed) {
+                    for (ViewerNode child : children) {
+                        y = child.render(screen, x, y, width);
+                    }
+                    if (!children.isEmpty() && screen.isRowInView(rowY)) {
+                        screen.addGuideLine(indent + ViewerStyle.TOGGLE_WIDTH + 1,
+                            rowY + ViewerStyle.ROW_HEIGHT / 2, y - ViewerStyle.ROW_HEIGHT / 2);
+                    }
                 }
                 return y;
             }
             default -> {
-                drawLine(screen, indent, y, describeSegments());
-                y += ROW_HEIGHT;
+                int endX = drawLine(screen, indent, y, describeSegments(), screen.isRowInView(y));
+                if (screen.isRowFullyVisible(y)) {
+                    screen.addTooltipRow(indent, y, endX - indent, fullLine());
+                }
+                y += ViewerStyle.ROW_HEIGHT;
                 return y;
             }
         }
     }
 
-    /** 预估整棵子树占用的总行高（用于滚动范围）。 */
+    /** 切换折叠状态并重建界面。 */
+    private void toggle(CodecViewerScreen screen) {
+        collapsed = !collapsed;
+        screen.rebuild();
+    }
+
+    /** 预览整棵子树占用的总行高（用于滚动范围）。 */
     public int height() {
         return switch (type()) {
-            case "UNION", "EITHER" -> ROW_HEIGHT + (selectedVariant == null ? 0 : selectedVariant.height());
-            case "RECORD" -> {
-                int h = label.isEmpty() ? 0 : ROW_HEIGHT;
-                for (ViewerNode child : children) {
-                    h += child.height();
+            case UNION, EITHER ->
+                ViewerStyle.ROW_HEIGHT + (collapsed || selectedVariant == null ? 0 : selectedVariant.height());
+            case RECORD -> {
+                int h = label.isEmpty() ? 0 : ViewerStyle.ROW_HEIGHT;
+                if (!collapsed) {
+                    for (ViewerNode child : children) {
+                        h += child.height();
+                    }
                 }
                 yield h;
             }
-            case "LIST", "SET", "OPTIONAL", "MAP" -> {
-                int h = ROW_HEIGHT;
-                for (ViewerNode child : children) {
-                    h += child.height();
+            case LIST, SET, OPTIONAL, MAP -> {
+                int h = ViewerStyle.ROW_HEIGHT;
+                if (!collapsed) {
+                    for (ViewerNode child : children) {
+                        h += child.height();
+                    }
                 }
                 yield h;
             }
-            default -> ROW_HEIGHT;
+            default -> ViewerStyle.ROW_HEIGHT;
         };
     }
 
-    /** 一行描述的全部彩色片段。 */
+    /** 行内显示名：字段名；无字段名（内联结构）时用类型名。 */
+    private String displayName() {
+        return label.isEmpty() ? type().name() : label;
+    }
+
+    /** 一行描述的彩色片段：现在只显示字段名。 */
     private List<Seg> describeSegments() {
-        List<Seg> segs = new ArrayList<>();
-        String typeText = type();
-        String java = schema.has("javaType") ? "(" + simpleName(schema.get("javaType").getAsString()) + ")" : "";
+        return List.of(new Seg(displayName(), ViewerStyle.COLOR_TEXT));
+    }
 
+    /** 完整行信息（悬浮提示用，不截断约束、枚举展示更多）。 */
+    private String fullLine() {
+        StringBuilder sb = new StringBuilder();
         if (label.isEmpty()) {
-            segs.add(new Seg(typeText + java, COLOR_TYPE));
+            sb.append(type().name());
         } else {
-            segs.add(new Seg(label, COLOR_NAME));
-            if (fieldMeta != null && fieldMeta.has("required")) {
-                boolean req = fieldMeta.get("required").getAsBoolean();
-                segs.add(new Seg(req ? " [必填]" : " [可选]", req ? COLOR_REQUIRED : COLOR_OPTIONAL));
+            sb.append(label);
+            if (fieldMeta != null && fieldMeta.has(SchemaKeys.REQUIRED)) {
+                sb.append(fieldMeta.get(SchemaKeys.REQUIRED).getAsBoolean() ? " [必填]" : " [可选]");
             }
-            segs.add(new Seg(": " + typeText + java, COLOR_TYPE));
+            sb.append(": ").append(type().name());
         }
-
-        if (schema.has("registry")) {
-            JsonObject reg = schema.getAsJsonObject("registry");
-            StringBuilder sb = new StringBuilder(" → ").append(reg.get("registry").getAsString());
-            if (reg.has("allowTag") && reg.get("allowTag").getAsBoolean()) {
+        if (schema.has(SchemaKeys.JAVA_TYPE)) {
+            sb.append("(").append(schema.get(SchemaKeys.JAVA_TYPE).getAsString()).append(")");
+        }
+        if (schema.has(SchemaKeys.REGISTRY)) {
+            JsonObject reg = schema.getAsJsonObject(SchemaKeys.REGISTRY);
+            sb.append(" → ").append(reg.get(SchemaKeys.REGISTRY).getAsString());
+            if (reg.has(SchemaKeys.ALLOW_TAG) && reg.get(SchemaKeys.ALLOW_TAG).getAsBoolean()) {
                 sb.append(" (+tag)");
             }
-            segs.add(new Seg(sb.toString(), COLOR_REGISTRY));
         }
-
         String constraints = formatConstraints(schema);
         if (!constraints.isEmpty()) {
-            segs.add(new Seg("  约束: " + truncate(constraints, MAX_CONSTRAINT_TEXT), COLOR_CONSTRAINT));
+            sb.append("  约束: ").append(constraints);
         }
-
         String def = defaultText();
         if (!def.isEmpty()) {
-            segs.add(new Seg("  默认: " + def, COLOR_DEFAULT));
+            sb.append("  默认: ").append(def);
         }
-
-        if (schema.has("enumValues")) {
-            JsonArray evs = schema.getAsJsonArray("enumValues");
+        if (schema.has(SchemaKeys.ENUM_VALUES)) {
+            JsonArray evs = schema.getAsJsonArray(SchemaKeys.ENUM_VALUES);
             if (evs.size() > 0) {
-                StringBuilder sb = new StringBuilder("  = ");
-                int shown = Math.min(evs.size(), MAX_ENUM_SHOWN);
+                sb.append("  = ");
+                int shown = Math.min(evs.size(), TOOLTIP_ENUM_SHOWN);
                 for (int i = 0; i < shown; i++) {
                     if (i > 0) sb.append(", ");
-                    sb.append(evs.get(i).getAsJsonObject().get("serializedName").getAsString());
+                    sb.append(evs.get(i).getAsJsonObject().get(SchemaKeys.SERIALIZED_NAME).getAsString());
                 }
-                if (evs.size() > shown) sb.append("…");
-                segs.add(new Seg(sb.toString(), COLOR_ENUM));
+                if (evs.size() > shown) sb.append("… (共 ").append(evs.size()).append(" 个)");
             }
         }
-
-        return segs;
+        if (isUnion() && variantKey != null) {
+            sb.append("  分派键: ").append(variantKey);
+            if (!unionNames.isEmpty() && unionIndex >= 0 && unionIndex < unionNames.size()) {
+                sb.append("  当前: ").append(unionNames.get(unionIndex));
+            }
+        }
+        return truncate(sb.toString(), MAX_TOOLTIP_TEXT);
     }
 
     /** 依次绘制彩色片段，返回下一个可用 x。 */
-    private void drawLine(CodecViewerScreen screen, int x, int y, List<Seg> segs) {
+    private int drawLine(CodecViewerScreen screen, int x, int y, List<Seg> segs, boolean visible) {
+        if (!visible) {
+            return x;
+        }
         int cx = x;
         for (Seg seg : segs) {
             if (seg.text().isEmpty()) continue;
             screen.drawLabel(cx, y, seg.text(), seg.color());
             cx += screen.fontWidth(seg.text());
         }
+        return cx;
     }
 
     /** 把 constraints JSON 数组格式化为可读文本。 */
     private static String formatConstraints(JsonObject schema) {
-        if (!schema.has("constraints")) return "";
+        if (!schema.has(SchemaKeys.CONSTRAINTS)) return "";
         List<String> parts = new ArrayList<>();
-        for (JsonElement c : schema.getAsJsonArray("constraints")) {
+        for (JsonElement c : schema.getAsJsonArray(SchemaKeys.CONSTRAINTS)) {
             String f = formatConstraint(c.getAsString());
             if (f != null && !f.isEmpty()) {
                 parts.add(f);
@@ -316,16 +410,36 @@ public class ViewerNode {
     /** 字段默认值文本（优先字段级，其次节点级）。 */
     private String defaultText() {
         JsonElement d = null;
-        if (fieldMeta != null && fieldMeta.has("default")) {
-            d = fieldMeta.get("default");
-        } else if (schema.has("default")) {
-            d = schema.get("default");
+        if (fieldMeta != null && fieldMeta.has(SchemaKeys.DEFAULT)) {
+            d = fieldMeta.get(SchemaKeys.DEFAULT);
+        } else if (schema.has(SchemaKeys.DEFAULT)) {
+            d = schema.get(SchemaKeys.DEFAULT);
         }
         if (d == null || d.isJsonNull()) return "";
         if (d.isJsonPrimitive() && d.getAsJsonPrimitive().isString()) {
             return d.getAsString();
         }
         return d.toString();
+    }
+
+    private boolean isUnion() {
+        SchemaType t = type();
+        return t == SchemaType.UNION || t == SchemaType.EITHER;
+    }
+
+    private static SchemaType typeOf(JsonObject schema) {
+        if (schema == null || !schema.has(SchemaKeys.TYPE)) {
+            return SchemaType.UNKNOWN;
+        }
+        try {
+            return SchemaType.valueOf(schema.get(SchemaKeys.TYPE).getAsString());
+        } catch (IllegalArgumentException e) {
+            return SchemaType.UNKNOWN;
+        }
+    }
+
+    private SchemaType type() {
+        return typeOf(schema);
     }
 
     /** 把 "10.0" 这类数值格式化成 "10"。 */
@@ -342,15 +456,6 @@ public class ViewerNode {
             return text.substring(0, max - 1) + "…";
         }
         return text;
-    }
-
-    private static String simpleName(String fqcn) {
-        int dot = fqcn.lastIndexOf('.');
-        return dot >= 0 ? fqcn.substring(dot + 1) : fqcn;
-    }
-
-    private String type() {
-        return schema != null && schema.has("type") ? schema.get("type").getAsString() : "UNKNOWN";
     }
 
     /** 一行中的一个彩色片段。 */
