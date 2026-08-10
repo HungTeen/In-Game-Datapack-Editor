@@ -1,0 +1,7 @@
+{
+  "type": "opentd:list",
+  "effects": [
+    "opentd:four_point_damage",
+    "opentd:knockback_damage"
+  ]
+}

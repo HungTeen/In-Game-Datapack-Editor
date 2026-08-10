@@ -1,0 +1,29 @@
+{
+  "bullet_speed": 0.3,
+  "effect": "opentd:splash_damage_to_all_entities",
+  "gravity": 0.01,
+  "max_exist_tick": 600,
+  "render_setting": {
+    "animation": "opentd:animations/pea_shooter.animation.json",
+    "height": 0.5,
+    "model": "opentd:geo/pea_shooter.geo.json",
+    "scale": 0.6,
+    "texture": "opentd:textures/entity/pea_shooter.png",
+    "width": 0.5
+  },
+  "slow_down": 0.99999,
+  "target_filter": "opentd:enemy_class",
+  "trail_particle": {
+    "offset": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "particle_type": "minecraft:angry_villager",
+    "speed": [
+      0.1,
+      0.1,
+      0.1
+    ]
+  }
+}

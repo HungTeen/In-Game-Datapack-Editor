@@ -1,0 +1,33 @@
+{
+  "type": "opentd:pvz_plant",
+  "gen_goal": {
+    "gen_sound": {
+      "sound_id": "minecraft:entity.player.levelup"
+    },
+    "productions": [
+      {
+        "cool_down": 200,
+        "entity_type": "minecraft:experience_orb",
+        "weight": 100
+      }
+    ],
+    "total_weight": 100
+  },
+  "hurt_effect": "opentd:summon_xp_around",
+  "plant_setting": {
+    "change_direction": false,
+    "id": "opentd:sun_flower",
+    "max_exist_tick": 3000,
+    "render_setting": {
+      "animation": "opentd:animations/sun_flower.animation.json",
+      "height": 1.0,
+      "model": "opentd:geo/sun_flower.geo.json",
+      "texture": "opentd:textures/entity/sun_flower.png",
+      "width": 0.8
+    },
+    "tower_setting": {
+      "death_duration": 30,
+      "persistent": true
+    }
+  }
+}
