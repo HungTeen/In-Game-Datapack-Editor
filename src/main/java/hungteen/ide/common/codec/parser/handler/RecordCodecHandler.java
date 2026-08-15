@@ -75,11 +75,31 @@ public final class RecordCodecHandler implements CodecSchemaHandler {
                     if (field != null) {
                         schema.fields().add(field);
                     }
+
+                } else if (CodecUnwrapper.isRecordMapCodec(current)) {
+
+                    /*
+                     * group 字段超过 8 个时 DFU 会拆分出子组合的 RecordCodecBuilder 节点
+                     * （非字段 MapCodec）。它们仍属于当前记录的字段装配，需要继续下钻
+                     * 才能收集到顶层字段（否则如 Biome 只解析出最后一个字段）。
+                     */
+                    for (Field field : ReflectionUtil.fields(current.getClass())) {
+
+                        try {
+
+                            Object value = field.get(current);
+
+                            if (value != null && !CodecUnwrapper.isTerminal(value)) {
+                                stack.push(value);
+                            }
+
+                        } catch (Throwable ignored) {
+                        }
+                    }
                 }
 
                 /*
-                 * 不深入任何 MapCodec 内部：
-                 * 字段类型统一由 FieldParser → resolver 链式解析，
+                 * 不深入字段 codec 的内部：字段类型统一由 FieldParser → resolver 链式解析，
                  * 避免把嵌套 Record 的字段误并到当前记录。
                  */
                 continue;

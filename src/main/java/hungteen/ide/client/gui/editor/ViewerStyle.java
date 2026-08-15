@@ -22,6 +22,8 @@ public final class ViewerStyle {
     public static final int TOGGLE_BUTTON_HEIGHT = 12;
     /** 折叠按钮与标签之间的间距。 */
     public static final int TOGGLE_GAP = 3;
+    /** 根节点主干参考线相对 indent 的偏移。 */
+    public static final int GUIDE_ROOT_X = 4;
     /** UNION 类型循环按钮尺寸。 */
     public static final int TYPE_BUTTON_WIDTH = 140;
     public static final int CYCLE_BUTTON_HEIGHT = 14;
@@ -66,6 +68,21 @@ public final class ViewerStyle {
     /** 下拉面板背景 / 边框。 */
     public static final int COLOR_DROPDOWN_BG = 0xC0101010;
     public static final int COLOR_DROPDOWN_BORDER = 0xFF6E6E6E;
+
+    // ---- 悬浮提示配色 ----
+    /** 类型 / 次要信息。 */
+    public static final int COLOR_TYPE = 0xD0D0D0;
+    /** 必填 / 可选。 */
+    public static final int COLOR_REQUIRED = 0xFF6B6B;
+    public static final int COLOR_OPTIONAL = 0x9E9E9E;
+    /** 约束范围。 */
+    public static final int COLOR_CONSTRAINT = 0xFFD54F;
+    /** 默认值。 */
+    public static final int COLOR_DEFAULT = 0x7CFC7C;
+    /** 注册表引用。 */
+    public static final int COLOR_REGISTRY = 0x6ECBFF;
+    /** 枚举 / 类型列表。 */
+    public static final int COLOR_ENUM = 0xD4A9FF;
 
     // ---- 行为 ----
     /** 状态提示自动消失时长（毫秒）。 */

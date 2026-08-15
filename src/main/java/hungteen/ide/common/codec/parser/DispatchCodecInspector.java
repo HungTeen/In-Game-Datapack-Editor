@@ -6,6 +6,9 @@ import hungteen.htlib.api.interfaces.IHTCommonRegistry;
 import hungteen.htlib.util.ReflectionUtil;
 import hungteen.ide.common.codec.parser.handler.DispatchCodecHandler;
 import net.minecraft.core.Registry;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.LinkedHashMap;
@@ -99,7 +102,7 @@ public final class DispatchCodecInspector {
         }
 
         // 2) 注册表条目。
-        Registry<?> registry = CodecUnwrapper.findRegistry(probe);
+        Registry<?> registry = resolveRegistry(probe);
 
         if (registry != null) {
 
@@ -131,6 +134,50 @@ public final class DispatchCodecInspector {
         }
 
         return map;
+    }
+
+    /**
+     * 解析 dispatch keyCodec 对应的实际注册表。
+     *
+     * <p>优先级：</p>
+     * <ol>
+     *   <li>对象图内直接找 {@link Registry} 实例（HTLib byNameCodec 会捕获注册表）；</li>
+     *   <li>按 {@link ResourceKey} 解析 —— 内置注册表走 {@link BuiltInRegistries}，
+     *       数据驱动注册表走服务端 {@link SchemaRegistryAccess} 的 RegistryAccess。</li>
+     * </ol>
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Registry<?> resolveRegistry(Object probe) {
+
+        Registry<?> direct = CodecUnwrapper.findRegistry(probe);
+
+        if (direct != null) {
+            return direct;
+        }
+
+        ResourceKey<?> key = CodecUnwrapper.registryKey(probe);
+
+        if (key != null) {
+
+            Registry<?> builtin = BuiltInRegistries.REGISTRY.get(key.location());
+
+            if (builtin != null) {
+                return builtin;
+            }
+
+            RegistryAccess access = SchemaRegistryAccess.get();
+
+            if (access != null) {
+
+                Optional<? extends Registry<?>> opt = access.registry((ResourceKey) key);
+
+                if (opt.isPresent()) {
+                    return opt.get();
+                }
+            }
+        }
+
+        return null;
     }
 
     /** BFS 找对象图中的第一个 {@link IHTCommonRegistry} 实例（HTLib 自定义注册表）。 */
@@ -201,8 +248,13 @@ public final class DispatchCodecInspector {
     /**
      * 调用 decoder 函数拿到某类型值对应的 codec。
      *
-     * <p>decoder 返回 {@code DataResult<? extends Decoder<V>>}，结果通常是 {@link com.mojang.serialization.Codec}。
-     * 解包 DataResult 后返回 Decoder 对象（可被责任链解析）。失败返回 null。</p>
+     * <p>decoder 返回形态多样，这里统一收编：</p>
+     * <ul>
+     *   <li>{@code DataResult<? extends Decoder<?>>} —— {@code Codec.dispatch} 的标准形态；</li>
+     *   <li>{@code DataResult<? extends MapCodec<?>>} —— MapCodec 分支的 dispatch；</li>
+     *   <li>直接返回 {@code Decoder} / {@code MapCodec}（个别实现不包 DataResult）。</li>
+     * </ul>
+     * <p>解包后返回 codec 对象（可被责任链解析）；失败返回 null。</p>
      */
     @SuppressWarnings("unchecked")
     private static Object applyDecoder(Function<?, ?> decoder, Object typeValue) {
@@ -215,9 +267,18 @@ public final class DispatchCodecInspector {
 
                 Optional<?> optional = result.result();
 
-                if (optional.isPresent() && optional.get() instanceof Decoder<?>) {
-                    return optional.get();
+                if (optional.isPresent()) {
+
+                    Object value = optional.get();
+
+                    if (value instanceof Decoder<?> || value instanceof com.mojang.serialization.MapCodec<?>) {
+                        return value;
+                    }
                 }
+
+            } else if (applied instanceof Decoder<?> || applied instanceof com.mojang.serialization.MapCodec<?>) {
+
+                return applied;
             }
 
         } catch (Throwable ignored) {

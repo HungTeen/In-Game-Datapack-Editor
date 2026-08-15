@@ -1,7 +1,9 @@
 package hungteen.ide.common.network;
 
 import hungteen.ide.common.codec.editor.CodecEditorManager;
+import hungteen.ide.common.codec.parser.SchemaRegistryAccess;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
@@ -32,6 +34,11 @@ public class RequestSchemaPacket {
     public static class Handler {
         public static void onMessage(RequestSchemaPacket message, Supplier<NetworkEvent.Context> ctx) {
             ctx.get().enqueueWork(() -> {
+                ServerPlayer sender = ctx.get().getSender();
+                if (sender != null) {
+                    // 供 DispatchCodec 枚举解析数据驱动注册表。
+                    SchemaRegistryAccess.set(sender.server.registryAccess());
+                }
                 CodecEditorManager.getSchemaJson(message.registryName).ifPresent(schema -> {
                     IDENetworkHandler.sendToClient(
                             ctx.get().getSender(),
