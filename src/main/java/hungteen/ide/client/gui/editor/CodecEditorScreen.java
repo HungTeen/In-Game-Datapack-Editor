@@ -20,11 +20,10 @@ import java.util.function.Consumer;
 /**
  * Codec 编辑器界面。
  *
- * <p>顶部工具条：数据包类型下拉框（点击展开选择）、表单/JSON 模式切换、保存路径与文件名、保存按钮。
- * 主体区域：表单或 JSON 文本视图。</p>
+ * <p>顶部工具条：数据包类型下拉框（支持搜索）、表单/JSON 模式切换、保存路径与文件名、保存按钮。
+ * 主体区域：表单或 JSON 文本视图。表单支持滚轮滚动与右键拖拽平移。</p>
  *
  * @author PangTeen
- * @program: HTLib
  * @create 2026/8/10 14:15
  **/
 public class CodecEditorScreen extends Screen {
@@ -98,12 +97,7 @@ public class CodecEditorScreen extends Screen {
         rebuild();
     }
 
-    /**
-     * 全量重建界面。
-     *
-     * <p>顺序：顶部工具条 → 主体（表单/JSON）→ 顶部下拉列表 → UNION 类型下拉按钮。
-     * 后加入的控件渲染在上层，因此两个下拉能盖住其下方的表单控件，不会被遮挡。</p>
-     */
+    /** 全量重建界面：顶部工具条 → 主体 → 顶部下拉（含搜索）→ UNION 下拉按钮。 */
     private void rebuild() {
         clearWidgets();
         dropdownButtons.clear();
@@ -223,12 +217,12 @@ public class CodecEditorScreen extends Screen {
             return;
         }
         if (!jsonMode && formRoot != null) {
-            formRoot.render(this, ViewerStyle.LEFT_PADDING + panX, TOP_OFFSET - formScroll,
+            formRoot.buildControls(this, ViewerStyle.LEFT_PADDING + panX, TOP_OFFSET - formScroll,
                 this.width - ViewerStyle.LEFT_PADDING * 2);
         }
     }
 
-    /** 把 JSON 文本格式化（多行缩进）。 */
+/** 把 JSON 文本格式化（多行缩进）。 */
     private static String prettyJson(String text) {
         try {
             return new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(JsonParser.parseString(text));
@@ -387,7 +381,7 @@ public class CodecEditorScreen extends Screen {
         }
     }
 
-public void drawLabel(int x, int y, String text) {
+    public void drawLabel(int x, int y, String text) {
         labelQueue.add(x, y, text);
     }
 
@@ -420,14 +414,14 @@ public void drawLabel(int x, int y, String text) {
         unionDropdown.addItems(x, y, width, node.unionNames(), node::selectVariant);
     }
 
-    @Override
+@Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics);
         // 每帧从节点状态重建标签与悬浮提示：校验红字/报错即时生效（控件仍保持重建时创建的实例，不丢焦点）
         labelQueue.clear();
         tooltipRows.clear();
         if (!dropdownOpen && !jsonMode && formRoot != null) {
-            formRoot.renderLabels(this, ViewerStyle.LEFT_PADDING + panX, TOP_OFFSET - formScroll,
+            formRoot.collectLabels(this, ViewerStyle.LEFT_PADDING + panX, TOP_OFFSET - formScroll,
                 this.width - ViewerStyle.LEFT_PADDING * 2);
         }
 
@@ -569,7 +563,7 @@ public void drawLabel(int x, int y, String text) {
         return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
-    @Override
+@Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // 点击 UNION 类型下拉外部关闭
         if (unionDropdown.handleClickOutside(mouseX, mouseY)) {
