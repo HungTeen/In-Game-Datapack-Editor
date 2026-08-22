@@ -10,8 +10,6 @@ import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 只读 schema 查看节点：把 schema JSON 渲染成缩进字段树。
@@ -47,13 +45,6 @@ public class ViewerNode {
 
     /** 悬浮提示里的枚举上限。 */
     private static final int TOOLTIP_ENUM_SHOWN = 20;
-
-    // ---- 约束字符串解析 ----
-    private static final Pattern RANGE = Pattern.compile("^Range\\[min=(.*), max=(.*)]$");
-    private static final Pattern MIN = Pattern.compile("^Min\\[value=(.*)]$");
-    private static final Pattern MAX = Pattern.compile("^Max\\[value=(.*)]$");
-    private static final Pattern LENGTH = Pattern.compile("^Length\\[min=(\\d+), max=(\\d+)]$");
-    private static final Pattern SIZE = Pattern.compile("^Size\\[min=(\\d+), max=(\\d+)]$");
 
     private final JsonObject schema;
     /** 字段元信息（required / default / path），根节点、元素与变体为 null。 */
@@ -172,12 +163,13 @@ public class ViewerNode {
                 boolean fullyVisible = screen.isRowFullyVisible(rowY);
                 if (fullyVisible) {
                     if (!unionNames.isEmpty()) {
-                        screen.addToggleButton(buttonX, rowY, ViewerStyle.TOGGLE_WIDTH, collapsed ? "+" : "-",
+                        screen.addToggleButton(buttonX, toggleButtonY(rowY), ViewerStyle.TOGGLE_WIDTH,
+                            collapsed ? "+" : "-",
                             () -> toggle(screen));
                     }
                     String current = unionIndex >= 0 && unionIndex < unionNames.size()
                         ? unionNames.get(unionIndex) : "";
-                    screen.addTypeButton(typeBtnX, rowY, ViewerStyle.TYPE_BUTTON_WIDTH,
+                    screen.addTypeButton(this, typeBtnX, rowY, ViewerStyle.TYPE_BUTTON_WIDTH,
                         unionNames.isEmpty() ? "类型: (无)" : "类型: " + current,
                         () -> screen.toggleUnionDropdown(this));
                     screen.addTooltipRow(indent, rowY,
@@ -188,9 +180,6 @@ public class ViewerNode {
                     int popupY = rowY + ViewerStyle.ROW_HEIGHT;
                     screen.addUnionDropdownButtons(typeBtnX, popupY, ViewerStyle.TYPE_BUTTON_WIDTH, unionNames,
                         idx -> selectVariant(idx));
-                    screen.setUnionOpenRects(typeBtnX, rowY, ViewerStyle.TYPE_BUTTON_WIDTH, ViewerStyle.ROW_HEIGHT,
-                        typeBtnX, popupY, ViewerStyle.TYPE_BUTTON_WIDTH,
-                        screen.height - ViewerStyle.BOTTOM_PADDING - popupY);
                 }
                 y += ViewerStyle.ROW_HEIGHT;
                 if (!collapsed && selectedVariant != null) {
@@ -209,7 +198,8 @@ public class ViewerNode {
                     buttonX = endX + ViewerStyle.TOGGLE_GAP;
                     if (screen.isRowFullyVisible(headerY)) {
                         if (!children.isEmpty()) {
-                            screen.addToggleButton(buttonX, headerY, ViewerStyle.TOGGLE_WIDTH, collapsed ? "+" : "-",
+                            screen.addToggleButton(buttonX, toggleButtonY(headerY), ViewerStyle.TOGGLE_WIDTH,
+                                collapsed ? "+" : "-",
                                 () -> toggle(screen));
                         }
                         screen.addTooltipRow(indent, headerY, endX - indent, tooltipLines());
@@ -238,7 +228,8 @@ public class ViewerNode {
                 int buttonX = endX + ViewerStyle.TOGGLE_GAP;
                 if (screen.isRowFullyVisible(rowY)) {
                     if (!children.isEmpty()) {
-                        screen.addToggleButton(buttonX, rowY, ViewerStyle.TOGGLE_WIDTH, collapsed ? "+" : "-",
+                        screen.addToggleButton(buttonX, toggleButtonY(rowY), ViewerStyle.TOGGLE_WIDTH,
+                            collapsed ? "+" : "-",
                             () -> toggle(screen));
                     }
                     screen.addTooltipRow(indent, rowY, endX - indent, tooltipLines());
@@ -270,6 +261,11 @@ public class ViewerNode {
     private void toggle(CodecViewerScreen screen) {
         collapsed = !collapsed;
         screen.refreshTree();
+    }
+
+    /** 折叠按钮的 y：在行内垂直居中，与字段名文本对齐。 */
+    private static int toggleButtonY(int rowY) {
+        return rowY + Math.max(0, (ViewerStyle.ROW_HEIGHT - ViewerStyle.TOGGLE_BUTTON_HEIGHT) / 2);
     }
 
     /** 预览整棵子树占用的总行高（用于滚动范围）。 */
@@ -437,67 +433,16 @@ public class ViewerNode {
 
     /** 把 constraints JSON 数组格式化为可读文本。 */
     private static String formatConstraints(JsonObject schema) {
-        if (!schema.has(SchemaKeys.CONSTRAINTS)) return "";
-        List<String> parts = new ArrayList<>();
-        for (JsonElement c : schema.getAsJsonArray(SchemaKeys.CONSTRAINTS)) {
-            String f = formatConstraint(c.getAsString());
-            if (f != null && !f.isEmpty()) {
-                parts.add(f);
-            }
-        }
-        return String.join("; ", parts);
+        return SchemaTooltip.formatConstraints(schema);
     }
 
-    /** 单条约束字符串 → 可读文本（未知格式原样返回）。 */
     private static String formatConstraint(String s) {
-        if (s == null) return "";
-        Matcher m;
-        if ((m = RANGE.matcher(s)).matches()) {
-            return "∈ [" + formatNum(m.group(1)) + ", " + formatNum(m.group(2)) + "]";
-        }
-        if ((m = MIN.matcher(s)).matches()) {
-            return "≥ " + formatNum(m.group(1));
-        }
-        if ((m = MAX.matcher(s)).matches()) {
-            return "≤ " + formatNum(m.group(1));
-        }
-        if ((m = LENGTH.matcher(s)).matches()) {
-            return "长度 ∈ [" + m.group(1) + ", " + m.group(2) + "]";
-        }
-        if ((m = SIZE.matcher(s)).matches()) {
-            return "个数 ∈ [" + m.group(1) + ", " + m.group(2) + "]";
-        }
-        if (s.startsWith("Pattern[regex=")) {
-            String inner = s.substring("Pattern[regex=".length());
-            if (inner.endsWith("]")) {
-                inner = inner.substring(0, inner.length() - 1);
-            }
-            return "匹配 /" + inner + "/";
-        }
-        return s;
-    }
-
-    /** 数值精简：保留两位小数并去掉多余的 0（如 10.0→10、0.33333333→0.33）。 */
-    private static String formatNum(String s) {
-        try {
-            return new java.math.BigDecimal(Double.toString(Double.parseDouble(s.trim())))
-                .setScale(2, java.math.RoundingMode.HALF_UP)
-                .stripTrailingZeros()
-                .toPlainString();
-        } catch (NumberFormatException e) {
-            return s.trim();
-        }
+        return SchemaTooltip.formatConstraint(s);
     }
 
     /** 取 schema 的默认值文本。 */
     private static String defaultOf(JsonObject s) {
-        if (s == null || !s.has(SchemaKeys.DEFAULT)) return "";
-        JsonElement d = s.get(SchemaKeys.DEFAULT);
-        if (d == null || d.isJsonNull()) return "";
-        if (d.isJsonPrimitive() && d.getAsJsonPrimitive().isString()) {
-            return d.getAsString();
-        }
-        return d.toString();
+        return SchemaTooltip.defaultText(s);
     }
 
     private static SchemaType typeOf(JsonObject schema) {

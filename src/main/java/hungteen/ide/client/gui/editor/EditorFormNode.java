@@ -25,9 +25,15 @@ import java.util.List;
  **/
 public class EditorFormNode {
 
-    private static final int ROW_HEIGHT = 20;
-    private static final int LABEL_WIDTH = 140;
-    private static final int CONTROL_WIDTH = 120;
+    /** 表单行高。 */
+    static final int ROW_HEIGHT = 13;
+    private static final int LABEL_WIDTH = 60;
+    private static final int CONTROL_WIDTH = 64;
+    private static final int CONTROL_MIN_WIDTH = 40;
+    /** 结构型子结构缩进。 */
+    private static final int INDENT = 6;
+    /** 可选枚举折叠按钮里的"不使用"项。 */
+    private static final String EMPTY_ENUM_LABEL = "不使用";
 
     private final JsonObject schema;
     private final String label;
@@ -51,6 +57,10 @@ public class EditorFormNode {
     private int unionIndex = 0;
     private final List<String> unionNames = new ArrayList<>();
 
+    // 校验
+    private boolean invalid = false;
+    private String errorMessage = "";
+
     public EditorFormNode(JsonObject schema, String label, JsonElement value) {
         this.schema = schema;
         this.label = label == null ? "" : label;
@@ -59,6 +69,7 @@ public class EditorFormNode {
             this.value = JsonNull.INSTANCE;
         }
         initChildren();
+        validateValue();
     }
 
     /** 根节点便捷构造。 */
@@ -148,114 +159,464 @@ public class EditorFormNode {
             }
             case "LIST", "SET" -> ROW_HEIGHT + listItems.size() * (ROW_HEIGHT + 4) + ROW_HEIGHT;
             case "MAP" -> ROW_HEIGHT + mapKeys.size() * (ROW_HEIGHT * 2 + 4) + ROW_HEIGHT;
-            case "OPTIONAL" -> ROW_HEIGHT + (optionalPresent ? optionalInner.height() + ROW_HEIGHT : 0);
+            case "OPTIONAL" -> {
+                if (collapsedOptionalEnum()) {
+                    yield ROW_HEIGHT;
+                }
+                if (optionalInner == null) {
+                    yield ROW_HEIGHT;
+                }
+                // 标量内联单行（= 内层 ROW_HEIGHT）；结构型 = 标题行 + 内层
+                yield isStructural(typeOf(elementSchema())) ? ROW_HEIGHT + optionalInner.height() : optionalInner.height();
+            }
             case "UNION", "EITHER" -> ROW_HEIGHT + (unionVariants.isEmpty() ? 0 : unionVariants.get(unionIndex).height() + ROW_HEIGHT);
             default -> ROW_HEIGHT;
         };
     }
 
-    /** 渲染控件，返回下一个可用的 y 坐标。 */
+    /**
+     * 校验当前值是否满足 schema 约束（数字范围 / 字符串长度 / 容器个数）。
+     * 不满足时置 {@link #invalid} 与 {@link #errorMessage}。
+     */
+    private void validateValue() {
+        invalid = false;
+        errorMessage = "";
+        if (!schema.has("constraints")) {
+            return;
+        }
+        SchemaTooltip.Kind kind;
+        String raw = "";
+        int count = 0;
+        switch (type()) {
+            case "BYTE", "SHORT", "INT", "LONG", "FLOAT", "DOUBLE" -> {
+                kind = SchemaTooltip.Kind.NUMBER;
+                raw = value != null && value.isJsonPrimitive() ? value.getAsString() : "";
+            }
+            case "STRING" -> {
+                kind = SchemaTooltip.Kind.STRING;
+                raw = value != null && value.isJsonPrimitive() ? value.getAsString() : "";
+            }
+            case "LIST", "SET" -> {
+                kind = SchemaTooltip.Kind.SIZE;
+                count = listItems.size();
+            }
+            default -> {
+                return;
+            }
+        }
+        for (JsonElement c : schema.getAsJsonArray("constraints")) {
+            String err = SchemaTooltip.checkConstraint(c.getAsString(), kind, raw, count);
+            if (err != null) {
+                invalid = true;
+                errorMessage = "值不满足约束 " + err;
+                return;
+            }
+        }
+    }
+
+    /** 悬浮提示：描述该字段的类型/约束/默认值/注册表/枚举/变体及校验状态。 */
+    private List<net.minecraft.network.chat.Component> tooltipLines() {
+        List<net.minecraft.network.chat.Component> lines = new ArrayList<>();
+        net.minecraft.network.chat.MutableComponent head =
+            net.minecraft.network.chat.Component.literal(label.isEmpty() ? type() : label)
+                .withStyle(st -> st.withColor(ViewerStyle.COLOR_TEXT));
+        head.append(net.minecraft.network.chat.Component.literal(": " + type())
+            .withStyle(st -> st.withColor(ViewerStyle.COLOR_TYPE)));
+        if (schema.has("javaType")) {
+            head.append(net.minecraft.network.chat.Component.literal(" (" + schema.get("javaType").getAsString() + ")")
+                .withStyle(st -> st.withColor(ViewerStyle.COLOR_TYPE)));
+        }
+        lines.add(head);
+
+        if (schema.has("registry")) {
+            JsonObject reg = schema.getAsJsonObject("registry");
+            String t = "注册表: " + reg.get("registry").getAsString();
+            if (reg.has("allowTag") && reg.get("allowTag").getAsBoolean()) {
+                t += " (+tag)";
+            }
+            lines.add(line(t, ViewerStyle.COLOR_REGISTRY));
+        }
+
+        String cc = SchemaTooltip.formatConstraints(schema);
+        if (!cc.isEmpty()) {
+            lines.add(line("约束: " + cc, ViewerStyle.COLOR_CONSTRAINT));
+        }
+
+        String def = SchemaTooltip.defaultText(schema);
+        if (!def.isEmpty()) {
+            lines.add(line("默认: " + def, ViewerStyle.COLOR_DEFAULT));
+        }
+
+        if (schema.has("enumValues")) {
+            JsonArray evs = schema.getAsJsonArray("enumValues");
+            if (evs.size() > 0) {
+                StringBuilder sb = new StringBuilder("取值: ");
+                int shown = Math.min(evs.size(), 20);
+                for (int i = 0; i < shown; i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append(evs.get(i).getAsJsonObject().get("serializedName").getAsString());
+                }
+                if (evs.size() > shown) sb.append("… (共 ").append(evs.size()).append(" 个)");
+                lines.add(line(sb.toString(), ViewerStyle.COLOR_ENUM));
+            }
+        }
+
+        switch (type()) {
+            case "LIST", "SET", "OPTIONAL" -> appendElementTooltip(lines);
+            case "MAP" -> {
+                appendChildType(lines, "键", schema.getAsJsonObject("key"));
+                appendChildType(lines, "值", schema.getAsJsonObject("value"));
+            }
+            case "UNION", "EITHER" -> {
+                if (schema.has("variantKey")) {
+                    lines.add(line("分派键: " + schema.get("variantKey").getAsString(), ViewerStyle.COLOR_TYPE));
+                }
+                if (!unionNames.isEmpty()) {
+                    lines.add(line("类型(" + unionNames.size() + "): " + String.join(", ", unionNames),
+                        ViewerStyle.COLOR_ENUM));
+                }
+            }
+            default -> {
+            }
+        }
+
+        if (invalid) {
+            lines.add(line(errorMessage, ViewerStyle.COLOR_ERROR));
+        }
+        return lines;
+    }
+
+    private void appendElementTooltip(List<net.minecraft.network.chat.Component> lines) {
+        if (!schema.has("element")) {
+            return;
+        }
+        JsonObject el = schema.getAsJsonObject("element");
+        String t = "元素: " + typeOf(el);
+        String cc = SchemaTooltip.formatConstraints(el);
+        if (!cc.isEmpty()) {
+            t += "  (" + cc + ")";
+        }
+        lines.add(line(t, ViewerStyle.COLOR_TYPE));
+    }
+
+    private void appendChildType(List<net.minecraft.network.chat.Component> lines, String role, JsonObject child) {
+        if (child == null) {
+            return;
+        }
+        String t = role + ": " + typeOf(child);
+        String cc = SchemaTooltip.formatConstraints(child);
+        if (!cc.isEmpty()) {
+            t += "  (" + cc + ")";
+        }
+        lines.add(line(t, ViewerStyle.COLOR_TYPE));
+    }
+
+    private static net.minecraft.network.chat.Component line(String text, int color) {
+        return net.minecraft.network.chat.Component.literal(text)
+            .withStyle(style -> style.withColor(color));
+    }
+
+    private static String typeOf(JsonObject s) {
+        return s != null && s.has("type") ? s.get("type").getAsString() : "UNKNOWN";
+    }
+
+    /** 字段名标签：超宽时省略号截断（完整名在悬浮提示里），避免挡住输入框。 */
+    private void fieldLabel(CodecEditorScreen screen, int x, int y, int color) {
+        fieldLabelText(screen, x, y, label.isEmpty() ? type() : label, color);
+    }
+
+    /** 用给定文本绘制字段名；与同行控件文字同一垂直线。 */
+    private void fieldLabelText(CodecEditorScreen screen, int x, int y, String text, int color) {
+        // 控件高 12，其文字居中于 y + (12-9)/2 = y+1；标签也画在同行 y+1，实现基线对齐
+        screen.drawLabelEllipsis(x, y + 1, text, LABEL_WIDTH, color);
+    }
+
+    /** 该 schema 类型是否为结构型（需要多行展示）。 */
+    private static boolean isStructural(String t) {
+        return switch (t) {
+            case "RECORD", "LIST", "SET", "MAP", "OPTIONAL", "UNION", "EITHER" -> true;
+            default -> false;
+        };
+    }
+
+    /** 可选字段包裹的是枚举类型：折叠成单个循环按钮，首项为"不使用"。 */
+    private boolean collapsedOptionalEnum() {
+        JsonObject inner = elementSchema();
+        return inner != null && schema.has("element") && "ENUM".equals(typeOf(inner));
+    }
+
+    /** 渲染控件（仅控件），返回下一个可用的 y 坐标。 */
     public int render(CodecEditorScreen screen, int x, int y, int width) {
         String type = type();
         int cx = x + LABEL_WIDTH;
-        int cw = Math.min(width - LABEL_WIDTH, CONTROL_WIDTH);
+        int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
 
         switch (type) {
             case "RECORD" -> {
                 for (EditorFormNode child : recordChildren) {
-                    int indent = x + 10;
-                    y = child.render(screen, indent, y, width - 10);
+                    int indent = x + INDENT;
+                    y = child.render(screen, indent, y, width - INDENT);
                 }
             }
             case "LIST", "SET" -> {
-                screen.drawLabel(x, y, label.isEmpty() ? "列表" : label);
-                y += ROW_HEIGHT;
-                for (int i = 0; i < listItems.size(); i++) {
-                    EditorFormNode item = listItems.get(i);
-                    final int idx = i;
-                    screen.addButton(x, y, 24, "-", b -> {
-                        listItems.remove(idx);
+                validateValue();
+                if (screen.formRowVisible(y)) {
+                    screen.addButton(cx, y, 20, "+", b -> {
+                        listItems.add(new EditorFormNode(elementSchema(), "", JsonNull.INSTANCE));
                         screen.rebuildForm();
                     });
-                    y = item.render(screen, x + 28, y, width - 28);
-                    y += 4;
+                    screen.addButton(cx + 22, y, 20, "-", b -> {
+                        if (!listItems.isEmpty()) {
+                            listItems.remove(listItems.size() - 1);
+                            screen.rebuildForm();
+                        }
+                    });
                 }
-                screen.addButton(x, y, 80, "+ 添加", b -> {
-                    listItems.add(new EditorFormNode(elementSchema(), "", JsonNull.INSTANCE));
-                    screen.rebuildForm();
-                });
                 y += ROW_HEIGHT;
+                for (EditorFormNode item : listItems) {
+                    y = item.render(screen, x + INDENT, y, width - INDENT);
+                }
             }
             case "MAP" -> {
-                screen.drawLabel(x, y, label.isEmpty() ? "映射" : label);
-                y += ROW_HEIGHT;
-                for (int i = 0; i < mapKeys.size(); i++) {
-                    EditorFormNode key = mapKeys.get(i);
-                    EditorFormNode val = mapValues.get(i);
-                    final int idx = i;
-                    screen.addButton(x, y, 24, "-", b -> {
-                        mapKeys.remove(idx);
-                        mapValues.remove(idx);
+                validateValue();
+                if (screen.formRowVisible(y)) {
+                    screen.addButton(cx, y, 20, "+", b -> {
+                        mapKeys.add(new EditorFormNode(keySchema(), "", new JsonPrimitive("")));
+                        mapValues.add(new EditorFormNode(valueSchema(), "", JsonNull.INSTANCE));
                         screen.rebuildForm();
                     });
-                    y = key.render(screen, x + 28, y, width - 28);
-                    y = val.render(screen, x + 28, y, width - 28);
-                    y += 4;
+                    screen.addButton(cx + 22, y, 20, "-", b -> {
+                        if (!mapKeys.isEmpty()) {
+                            mapKeys.remove(mapKeys.size() - 1);
+                            mapValues.remove(mapValues.size() - 1);
+                            screen.rebuildForm();
+                        }
+                    });
                 }
-                screen.addButton(x, y, 80, "+ 添加", b -> {
-                    mapKeys.add(new EditorFormNode(keySchema(), "", new JsonPrimitive("")));
-                    mapValues.add(new EditorFormNode(valueSchema(), "", JsonNull.INSTANCE));
-                    screen.rebuildForm();
-                });
                 y += ROW_HEIGHT;
+                for (int i = 0; i < Math.max(mapKeys.size(), mapValues.size()); i++) {
+                    EditorFormNode key = mapKeys.get(i);
+                    EditorFormNode val = mapValues.get(i);
+                    if (key != null || val != null) {
+                        if (key != null) {
+                            y = key.render(screen, x + INDENT, y, width - INDENT);
+                        }
+                        if (val != null) {
+                            y = val.render(screen, x + INDENT, y, width - INDENT);
+                        }
+                    }
+                }
             }
             case "OPTIONAL" -> {
-                String presentText = optionalPresent ? "启用" : "禁用";
-                screen.addButton(x, y, 60, presentText, b -> {
-                    optionalPresent = !optionalPresent;
-                    if (optionalPresent && optionalInner == null) {
-                        optionalInner = new EditorFormNode(elementSchema(), "", JsonNull.INSTANCE);
+                validateValue();
+                if (collapsedOptionalEnum()) {
+                    if (screen.formRowVisible(y)) {
+                        List<String> opts = new ArrayList<>();
+                        opts.add(EMPTY_ENUM_LABEL);
+                        JsonObject inner = elementSchema();
+                        if (inner.has("enumValues")) {
+                            for (JsonElement e : inner.getAsJsonArray("enumValues")) {
+                                opts.add(e.getAsJsonObject().get("serializedName").getAsString());
+                            }
+                        }
+                        int innerIdx = optionalPresent && optionalInner != null ? optionalInner.enumIndex() : -1;
+                        screen.addCycleButton(cx, y, cw, opts, innerIdx < 0 ? 0 : innerIdx + 1, i -> {
+                            if (i == 0) {
+                                optionalPresent = false;
+                                optionalInner = null;
+                            } else if (i - 1 < opts.size() - 1) {
+                                optionalPresent = true;
+                                optionalInner = new EditorFormNode(inner, "", new JsonPrimitive(opts.get(i)));
+                            }
+                            screen.rebuildForm();
+                        });
                     }
-                    screen.rebuildForm();
-                });
-                screen.drawLabel(x + 66, y, label);
-                y += ROW_HEIGHT;
-                if (optionalPresent && optionalInner != null) {
-                    y = optionalInner.render(screen, x + 10, y, width - 10);
+                    y += ROW_HEIGHT;
+                } else if (optionalInner != null) {
+                    // 不再有"启用/禁用"行：标量直接内联到本行，结构型给一行标题后展开
+                    if (isStructural(typeOf(elementSchema()))) {
+                        y = optionalInner.render(screen, x + INDENT, y, width - INDENT);
+                    } else {
+                        y = optionalInner.renderWithLabel(screen, x, y, width, label);
+                    }
                 }
             }
             case "UNION", "EITHER" -> {
                 if (!unionVariants.isEmpty()) {
-                    screen.drawLabel(x, y, "类型");
-                    screen.addCycleButton(x + LABEL_WIDTH, y, cw, unionNames, unionIndex, idx -> {
-                        unionIndex = idx;
-                        unionVariants.get(idx).load(JsonNull.INSTANCE);
-                        screen.rebuildForm();
-                    });
+                    if (screen.formRowVisible(y)) {
+                        String currentName = unionIndex >= 0 && unionIndex < unionNames.size()
+                            ? unionNames.get(unionIndex) : "";
+                        screen.addUnionTypeButton(this, cx, y, cw, currentName);
+                        if (screen.isUnionDropdownOpen(this)) {
+                            screen.addUnionDropdownButtons(this, cx,
+                                y + ViewerStyle.ROW_HEIGHT + ViewerStyle.FIELD_GAP, cw);
+                        }
+                    }
                     y += ROW_HEIGHT;
-                    EditorFormNode selected = unionVariants.get(unionIndex);
-                    if (selected != null) {
-                        y = selected.render(screen, x + 10, y, width - 10);
+                    // 类型下拉展开时隐藏下方分支字段，避免透过面板显示
+                    if (!screen.isUnionDropdownOpen(this)) {
+                        EditorFormNode selected = unionVariants.get(unionIndex);
+                        if (selected != null) {
+                            y = selected.render(screen, x + INDENT, y, width - INDENT);
+                        }
                     }
                 }
             }
             case "ENUM" -> {
-                screen.drawLabel(x, y, label);
-                screen.addCycleButton(x + LABEL_WIDTH, y, cw, enumValues, enumIndex, i -> enumIndex = i);
+                if (screen.formRowVisible(y)) {
+                    screen.addCycleButton(cx, y, cw, enumValues, enumIndex, i -> enumIndex = i);
+                }
                 y += ROW_HEIGHT;
             }
             case "BOOLEAN" -> {
-                boolean current = value.isJsonPrimitive() && value.getAsBoolean();
-                screen.addButton(x + LABEL_WIDTH, y, cw, String.valueOf(current), b -> {
-                    value = new JsonPrimitive(!(value.isJsonPrimitive() && value.getAsBoolean()));
-                    screen.rebuildForm();
-                });
-                screen.drawLabel(x, y, label);
+                if (screen.formRowVisible(y)) {
+                    boolean current = value.isJsonPrimitive() && value.getAsBoolean();
+                    screen.addButton(cx, y, cw, String.valueOf(current), b -> {
+                        value = new JsonPrimitive(!(value.isJsonPrimitive() && value.getAsBoolean()));
+                        screen.rebuildForm();
+                    });
+                }
                 y += ROW_HEIGHT;
             }
             default -> {
-                screen.drawLabel(x, y, label);
-                editBox = screen.addEditBox(cx, y, cw, textOf(value), s -> value = parseInput(s, type()));
+                validateValue();
+                if (screen.formRowVisible(y)) {
+                    editBox = screen.addEditBox(cx, y, cw, textOf(value), s -> {
+                        value = parseInput(s, type());
+                        validateValue();
+                        // 输入立即校验：实时更新文字颜色
+                        if (editBox != null) {
+                            editBox.setTextColor(invalid ? ViewerStyle.COLOR_ERROR_VALUE : 0xFFFFFFFF);
+                        }
+                    });
+                    if (invalid) {
+                        editBox.setTextColor(ViewerStyle.COLOR_ERROR_VALUE);
+                    }
+                }
+                y += ROW_HEIGHT;
+            }
+        }
+        return y;
+    }
+
+    /** 用外部行标签渲染单行标量控件（可选字段去掉"启用/禁用"后内联用）。 */
+    public int renderWithLabel(CodecEditorScreen screen, int x, int y, int width, String rowLabel) {
+        String t = type();
+        int cx = x + LABEL_WIDTH;
+        int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
+        if (screen.formRowVisible(y)) {
+            switch (t) {
+                case "ENUM" -> {
+                    screen.addCycleButton(cx, y, cw, enumValues, enumIndex, i -> enumIndex = i);
+                }
+                case "BOOLEAN" -> {
+                    boolean cur = value.isJsonPrimitive() && value.getAsBoolean();
+                    screen.addButton(cx, y, cw, String.valueOf(cur), b -> {
+                        value = new JsonPrimitive(!(value.isJsonPrimitive() && value.getAsBoolean()));
+                        screen.rebuildForm();
+                    });
+                }
+                default -> {
+                    validateValue();
+                    editBox = screen.addEditBox(cx, y, cw, textOf(value), s -> {
+                        value = parseInput(s, t);
+                        validateValue();
+                        if (editBox != null) {
+                            editBox.setTextColor(invalid ? ViewerStyle.COLOR_ERROR_VALUE : 0xFFFFFFFF);
+                        }
+                    });
+                    if (invalid) {
+                        editBox.setTextColor(ViewerStyle.COLOR_ERROR_VALUE);
+                    }
+                }
+            }
+        }
+        return y + ROW_HEIGHT;
+    }
+
+    /** {@link #renderWithLabel} 的标签/提示版本（每帧重建）。 */
+    public int renderLabelsWithLabel(CodecEditorScreen screen, int x, int y, int width, String rowLabel) {
+        int cx = x + LABEL_WIDTH;
+        int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
+        validateValue();
+        fieldLabelText(screen, x, y, rowLabel, invalid ? ViewerStyle.COLOR_ERROR : ViewerStyle.COLOR_TEXT);
+        screen.addTooltipRow(x, y, cx + cw - x, ROW_HEIGHT, tooltipLines());
+        return y + ROW_HEIGHT;
+    }
+
+    /**
+     * 只重建标签与悬浮提示（不建控件），每帧调用。
+     *
+     * <p>布局推进与 {@link #render} 完全一致；因为校验状态在节点上实时更新，
+     * 标签颜色/报错能即时反映，无需整屏重建（重建控件会丢输入焦点）。</p>
+     */
+    public int renderLabels(CodecEditorScreen screen, int x, int y, int width) {
+        String type = type();
+        int cx = x + LABEL_WIDTH;
+        int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
+        int endX = cx + cw;
+
+        switch (type) {
+            case "RECORD" -> {
+                for (EditorFormNode child : recordChildren) {
+                    int indent = x + INDENT;
+                    y = child.renderLabels(screen, indent, y, width - INDENT);
+                }
+            }
+            case "LIST", "SET", "MAP" -> {
+                validateValue();
+                fieldLabel(screen, x, y, invalid ? ViewerStyle.COLOR_ERROR : ViewerStyle.COLOR_TEXT);
+                screen.addTooltipRow(x, y, LABEL_WIDTH, ROW_HEIGHT, tooltipLines());
+                y += ROW_HEIGHT;
+                if (type.equals("LIST") || type.equals("SET")) {
+                    for (EditorFormNode item : listItems) {
+                        y = item.renderLabels(screen, x + INDENT, y, width - INDENT);
+                    }
+                } else {
+                    for (int i = 0; i < mapKeys.size(); i++) {
+                        y = mapKeys.get(i).renderLabels(screen, x + INDENT, y, width - INDENT);
+                        y = mapValues.get(i).renderLabels(screen, x + INDENT, y, width - INDENT);
+                    }
+                }
+            }
+            case "OPTIONAL" -> {
+                if (collapsedOptionalEnum()) {
+                    fieldLabel(screen, x, y, ViewerStyle.COLOR_TEXT);
+                    screen.addTooltipRow(x, y, endX - x, ROW_HEIGHT, tooltipLines());
+                    y += ROW_HEIGHT;
+                } else if (optionalInner != null) {
+                    if (isStructural(typeOf(elementSchema()))) {
+                        fieldLabel(screen, x, y, ViewerStyle.COLOR_TEXT);
+                        screen.addTooltipRow(x, y, endX - x, ROW_HEIGHT, tooltipLines());
+                        y += ROW_HEIGHT;
+                        y = optionalInner.renderLabels(screen, x + INDENT, y, width - INDENT);
+                    } else {
+                        y = optionalInner.renderLabelsWithLabel(screen, x, y, width, label);
+                    }
+                }
+            }
+            case "UNION", "EITHER" -> {
+                if (!unionVariants.isEmpty()) {
+                    fieldLabel(screen, x, y, ViewerStyle.COLOR_TEXT);
+                    screen.addTooltipRow(x, y, endX - x, ROW_HEIGHT, tooltipLines());
+                    y += ROW_HEIGHT;
+                    if (!screen.isUnionDropdownOpen(this)) {
+                        EditorFormNode selected = unionVariants.get(unionIndex);
+                        if (selected != null) {
+                            y = selected.renderLabels(screen, x + INDENT, y, width - INDENT);
+                        }
+                    }
+                }
+            }
+            case "ENUM", "BOOLEAN" -> {
+                fieldLabel(screen, x, y, ViewerStyle.COLOR_TEXT);
+                screen.addTooltipRow(x, y, endX - x, ROW_HEIGHT, tooltipLines());
+                y += ROW_HEIGHT;
+            }
+            default -> {
+                validateValue();
+                fieldLabel(screen, x, y, invalid ? ViewerStyle.COLOR_ERROR : ViewerStyle.COLOR_TEXT);
+                screen.addTooltipRow(x, y, endX - x, ROW_HEIGHT, tooltipLines());
                 y += ROW_HEIGHT;
             }
         }
@@ -300,6 +661,25 @@ public class EditorFormNode {
         return schema.getAsJsonObject("value");
     }
 
+    /** UNION 变体名列表（供类型下拉用）。 */
+    public List<String> unionNames() {
+        return unionNames;
+    }
+
+    /** 当前枚举下标（供可选枚举折叠按钮计算)。 */
+    public int enumIndex() {
+        return enumIndex;
+    }
+
+    /** 切换到指定 UNION 变体。 */
+    public void selectVariant(int idx) {
+        if (idx < 0 || idx >= unionVariants.size()) {
+            return;
+        }
+        unionIndex = idx;
+        unionVariants.get(idx).load(JsonNull.INSTANCE);
+    }
+
     // -------------------------------------------------
     // 值收集 / 加载
     // -------------------------------------------------
@@ -339,7 +719,11 @@ public class EditorFormNode {
                 return obj;
             }
             case "OPTIONAL" -> {
-                if (!optionalPresent || optionalInner == null) {
+                if (optionalInner == null) {
+                    return JsonNull.INSTANCE;
+                }
+                // 可选枚举才可能"不使用"（缺省省略键）；其余可选字段总是输出内层值。
+                if (collapsedOptionalEnum() && !optionalPresent) {
                     return JsonNull.INSTANCE;
                 }
                 return optionalInner.collect();
@@ -426,7 +810,7 @@ public class EditorFormNode {
 
     /** 该节点是否"可选且当前未启用"（用于 RECORD 收集时省略键）。 */
     private boolean isOptionalAndAbsent() {
-        return type().equals("OPTIONAL") && !optionalPresent;
+        return type().equals("OPTIONAL") && collapsedOptionalEnum() && !optionalPresent;
     }
 
     private JsonElement fieldValue(String name) {
@@ -441,7 +825,13 @@ public class EditorFormNode {
     }
 
     private String textOf(JsonElement e) {
-        if (e == null || e.isJsonNull()) return "";
+        if (e == null || e.isJsonNull()) {
+            return "";
+        }
+        // 字符串不加引号：JsonPrimitive.toString() 会带引号，回填输入框后再解析会造成引号翻倍
+        if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()) {
+            return e.getAsString();
+        }
         return e.toString();
     }
 

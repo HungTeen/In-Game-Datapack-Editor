@@ -55,15 +55,11 @@ public class CodecViewerScreen extends Screen {
     /** 重建搜索框时忽略 responder（避免 setValue 触发一次多余的列表重建）。 */
     private boolean ignoreSearchResponder = false;
 
-    /** 字段树上的按钮（折叠/类型切换），滚动/折叠时单独重建。 */
+    /** 字段树上的按钮（折叠），滚动/折叠时单独重建。 */
     private final List<Button> treeButtons = new ArrayList<>();
 
     // UNION 类型下拉
-    private ViewerNode openUnionNode = null;
-    private int unionDropdownScroll = 0;
-    private Rect unionTypeBtnRect;
-    private Rect unionDropdownRect;
-    private final List<Rect> unionBgs = new ArrayList<>();
+    private final NodeDropdown<ViewerNode> unionDropdown;
 
     private ViewerNode root;
     private int scroll = 0;
@@ -71,7 +67,7 @@ public class CodecViewerScreen extends Screen {
     /** 状态提示的过期时间戳（毫秒），过期后自动清空。 */
     private long statusUntil = Long.MAX_VALUE;
 
-    private final List<Label> labels = new ArrayList<>();
+    private final LabelQueue labelQueue;
     private final List<GuideLine> guides = new ArrayList<>();
     private final List<TooltipRow> tooltipRows = new ArrayList<>();
 
@@ -79,6 +75,8 @@ public class CodecViewerScreen extends Screen {
         super(Component.literal("Codec 字段查看器"));
         this.registryNames = new ArrayList<>(registryNames);
         this.selected = preselect == null ? "" : preselect;
+        this.labelQueue = new LabelQueue();
+        this.unionDropdown = new NodeDropdown<>(this, this::addRenderableWidget, this::removeWidget, this::refreshTree);
     }
 
     @Override
@@ -100,7 +98,7 @@ public class CodecViewerScreen extends Screen {
     /** 重建界面。 */
     public void rebuild() {
         clearWidgets();
-        labels.clear();
+        labelQueue.clear();
         guides.clear();
         tooltipRows.clear();
         treeButtons.clear();
@@ -113,6 +111,8 @@ public class CodecViewerScreen extends Screen {
                 if (!dropdownOpen) {
                     dropdownFilter = "";
                     dropdownScroll = 0;
+                } else {
+                    unionDropdown.close();
                 }
                 rebuild();
             }).bounds(ViewerStyle.LEFT_PADDING, ViewerStyle.TYPE_DROPDOWN_Y,
@@ -145,7 +145,8 @@ public class CodecViewerScreen extends Screen {
             removeWidget(b);
         }
         treeButtons.clear();
-        labels.clear();
+        unionDropdown.removeAll();
+        labelQueue.clear();
         guides.clear();
         tooltipRows.clear();
 
@@ -154,6 +155,9 @@ public class CodecViewerScreen extends Screen {
             root.render(this, ViewerStyle.LEFT_PADDING, yPos,
                 this.width - ViewerStyle.LEFT_PADDING - ViewerStyle.RIGHT_PADDING);
         }
+
+        // UNION 类型下拉按钮最后加入渲染列表 → 盖在其他按钮之上
+        unionDropdown.addDeferredToScreen();
     }
 
     /** 创建/复用搜索框（复用实例以保持输入焦点）。 */
@@ -218,8 +222,7 @@ public class CodecViewerScreen extends Screen {
         dropdownOpen = false;
         dropdownFilter = "";
         dropdownScroll = 0;
-        openUnionNode = null;
-        unionDropdownScroll = 0;
+        unionDropdown.close();
         IDENetworkHandler.sendToServer(new RequestSchemaPacket(name));
         setStatus("请求 " + name + " schema...");
         rebuild();
@@ -228,8 +231,7 @@ public class CodecViewerScreen extends Screen {
     private void applySchema(String schemaJson) {
         try {
             this.root = ViewerNode.root(JsonParser.parseString(schemaJson).getAsJsonObject());
-            openUnionNode = null;
-            unionDropdownScroll = 0;
+            unionDropdown.close();
             setStatus("已加载 " + selected);
             scroll = 0;
             rebuild();
@@ -269,12 +271,12 @@ public class CodecViewerScreen extends Screen {
     // -------------------------------------------------
 
     public void drawLabel(int x, int y, String text) {
-        drawLabel(x, y, text, ViewerStyle.COLOR_TEXT);
+        labelQueue.add(x, y, text);
     }
 
     /** 用指定颜色绘制标签。 */
     public void drawLabel(int x, int y, String text, int color) {
-        labels.add(new Label(x, y, text, color));
+        labelQueue.add(x, y, text, color);
     }
 
     /** 文本像素宽度（供 ViewerNode 拼接彩色片段用）。 */
@@ -303,61 +305,28 @@ public class CodecViewerScreen extends Screen {
     }
 
     // -------------------------------------------------
-    // UNION 类型下拉
+    // UNION 类型下拉（复用 NodeDropdown）
     // -------------------------------------------------
 
     /** 展开/收起某 UNION 节点的类型下拉。 */
     public void toggleUnionDropdown(ViewerNode node) {
-        openUnionNode = openUnionNode == node ? null : node;
-        unionDropdownScroll = 0;
-        unionTypeBtnRect = null;
-        unionDropdownRect = null;
+        unionDropdown.toggle(node);
         refreshTree();
     }
 
     /** 该 UNION 节点的类型下拉是否展开。 */
     public boolean isUnionDropdownOpen(ViewerNode node) {
-        return openUnionNode == node;
+        return unionDropdown.isOpen(node);
     }
 
     /** 类型选择按钮（点击展开下拉）。 */
-    public void addTypeButton(int x, int y, int width, String text, Runnable onClick) {
-        Button b = Button.builder(Component.literal(text), btn -> onClick.run())
-            .bounds(x, y, width, ViewerStyle.ROW_HEIGHT).build();
-        addRenderableWidget(b);
-        treeButtons.add(b);
+    public void addTypeButton(ViewerNode node, int x, int y, int width, String text, Runnable onClick) {
+        unionDropdown.addTrigger(node, x, y, width, text, onClick);
     }
 
-    /** 记录展开节点的按钮/下拉区域（用于点击外部关闭）。 */
-    public void setUnionOpenRects(int tx, int ty, int tw, int th, int px, int py, int pw, int ph) {
-        this.unionTypeBtnRect = new Rect(tx, ty, tw, th);
-        this.unionDropdownRect = new Rect(px, py, pw, ph);
-    }
-
-    /** 添加 UNION 类型下拉列表按钮（滚动取可见切片）。 */
+    /** 添加 UNION 类型下拉列表按钮（滚动取可见切片，延迟到最后加入渲染）。 */
     public void addUnionDropdownButtons(int x, int y, int width, List<String> names, Consumer<Integer> onSelect) {
-        int listBottom = this.height - ViewerStyle.BOTTOM_PADDING;
-        int maxRows = Math.max(0, (listBottom - y) / (ViewerStyle.FIELD_ROW + ViewerStyle.FIELD_GAP));
-        int maxScroll = Math.max(0, names.size() - maxRows);
-        unionDropdownScroll = Math.max(0, Math.min(unionDropdownScroll, maxScroll));
-        unionBgs.add(new Rect(x - ViewerStyle.DROPDOWN_PANEL_MARGIN, y - ViewerStyle.DROPDOWN_PANEL_MARGIN,
-            width + ViewerStyle.DROPDOWN_PANEL_MARGIN * 2, listBottom - y + ViewerStyle.DROPDOWN_PANEL_MARGIN * 2));
-
-        int rowY = y;
-        int end = Math.min(names.size(), unionDropdownScroll + maxRows);
-        for (int i = unionDropdownScroll; i < end; i++) {
-            final String name = names.get(i);
-            final int idx = i;
-            Button b = Button.builder(Component.literal(name), btn -> {
-                onSelect.accept(idx);
-                openUnionNode = null;
-                unionDropdownScroll = 0;
-                refreshTree();
-            }).bounds(x, rowY, width, ViewerStyle.FIELD_ROW).build();
-            addRenderableWidget(b);
-            treeButtons.add(b);
-            rowY += ViewerStyle.FIELD_ROW + ViewerStyle.FIELD_GAP;
-        }
+        unionDropdown.addItems(x, y, width, names, onSelect::accept);
     }
 
     /** 记录一条垂直参考线（层级连接）。 */
@@ -374,24 +343,7 @@ public class CodecViewerScreen extends Screen {
         }
     }
 
-    private static class Label {
-        final int x;
-        final int y;
-        final String text;
-        final int color;
-
-        Label(int x, int y, String text, int color) {
-            this.x = x;
-            this.y = y;
-            this.text = text;
-            this.color = color;
-        }
-    }
-
     private record GuideLine(int x, int y1, int y2) {
-    }
-
-    private record Rect(int x, int y, int width, int height) {
     }
 
     private record TooltipRow(int x, int y, int width, List<Component> tooltip) {
@@ -402,7 +354,7 @@ public class CodecViewerScreen extends Screen {
         renderBackground(graphics);
 
         // 字段树/下拉面板区域裁剪在 TOP_OFFSET 之下：滚动时不会与顶部工具条重叠
-        graphics.enableScissor(0, ViewerStyle.TOP_OFFSET, this.width, this.height - ViewerStyle.TOP_OFFSET);
+        graphics.enableScissor(0, ViewerStyle.TOP_OFFSET, this.width, this.height);
 
         if (dropdownOpen) {
             drawDropdownBackground(graphics);
@@ -412,21 +364,12 @@ public class CodecViewerScreen extends Screen {
                 graphics.vLine(g.x, g.y1, g.y2, ViewerStyle.COLOR_GUIDE);
             }
             // 字段行（每帧重绘；内容在 rebuild 时填充）
-            for (Label l : labels) {
-                graphics.drawString(this.font, l.text, l.x, l.y, l.color);
-            }
+            labelQueue.render(graphics, this.font);
             drawScrollbar(graphics);
         }
 
         // UNION 类型下拉背景（覆盖其下方的字段行）
-        for (Rect r : unionBgs) {
-            graphics.fill(r.x, r.y, r.x + r.width, r.y + r.height, ViewerStyle.COLOR_DROPDOWN_BG);
-            graphics.hLine(r.x, r.x + r.width, r.y, ViewerStyle.COLOR_DROPDOWN_BORDER);
-            graphics.hLine(r.x, r.x + r.width, r.y + r.height, ViewerStyle.COLOR_DROPDOWN_BORDER);
-            graphics.vLine(r.x, r.y, r.y + r.height, ViewerStyle.COLOR_DROPDOWN_BORDER);
-            graphics.vLine(r.x + r.width, r.y, r.y + r.height, ViewerStyle.COLOR_DROPDOWN_BORDER);
-        }
-        unionBgs.clear();
+        unionDropdown.renderPanels(graphics);
 
         graphics.disableScissor();
 
@@ -445,6 +388,10 @@ public class CodecViewerScreen extends Screen {
             drawDropdownScrollbar(graphics);
         }
 
+        if (unionDropdown.hasOpen()) {
+            unionDropdown.renderScrollbar(graphics);
+        }
+
         // 悬浮提示（画在最上层，多行彩色）
         for (TooltipRow r : tooltipRows) {
             if (mouseX >= r.x && mouseX <= r.x + r.width && mouseY >= r.y && mouseY <= r.y + ViewerStyle.ROW_HEIGHT) {
@@ -456,34 +403,20 @@ public class CodecViewerScreen extends Screen {
 
     /** 下拉面板背景 + 边框。 */
     private void drawDropdownBackground(GuiGraphics graphics) {
-        int x1 = dropdownPanelLeft();
-        int x2 = dropdownPanelRight();
-        int y1 = ViewerStyle.TOP_OFFSET - ViewerStyle.DROPDOWN_PANEL_MARGIN;
+        int y1 = dropdownListTop() - ViewerStyle.DROPDOWN_PANEL_MARGIN;
         int y2 = dropdownPanelBottom() + ViewerStyle.DROPDOWN_PANEL_MARGIN;
-        graphics.fill(x1, y1, x2, y2, ViewerStyle.COLOR_DROPDOWN_BG);
-        graphics.hLine(x1, x2, y1, ViewerStyle.COLOR_DROPDOWN_BORDER);
-        graphics.hLine(x1, x2, y2, ViewerStyle.COLOR_DROPDOWN_BORDER);
-        graphics.vLine(x1, y1, y2, ViewerStyle.COLOR_DROPDOWN_BORDER);
-        graphics.vLine(x2, y1, y2, ViewerStyle.COLOR_DROPDOWN_BORDER);
+        DropdownUtil.drawPanel(graphics, new Rect(dropdownPanelLeft(), y1, dropdownPanelRight() - dropdownPanelLeft(),
+            y2 - y1));
     }
 
     /** 下拉列表滚动条（画在按钮之上）。 */
     private void drawDropdownScrollbar(GuiGraphics graphics) {
-        List<String> filtered = filteredRegistryNames();
         int maxRows = dropdownMaxRows();
-        int maxScroll = Math.max(0, filtered.size() - maxRows);
-        if (maxScroll <= 0) {
-            return;
-        }
         int trackX = dropdownPanelRight() - ViewerStyle.SCROLLBAR_WIDTH - ViewerStyle.SCROLLBAR_RIGHT_MARGIN;
-        int trackY = dropdownListTop();
-        int trackH = dropdownPanelBottom() - trackY;
-        graphics.fill(trackX - 1, trackY, trackX + ViewerStyle.SCROLLBAR_WIDTH + 1, trackY + trackH,
-            ViewerStyle.COLOR_SCROLL_TRACK);
-        int thumbH = Math.max(ViewerStyle.ROW_HEIGHT, trackH * maxRows / Math.max(1, filtered.size()));
-        int thumbY = trackY + (int)((long)dropdownScroll * (trackH - thumbH) / maxScroll);
-        graphics.fill(trackX, thumbY, trackX + ViewerStyle.SCROLLBAR_WIDTH, thumbY + thumbH,
-            ViewerStyle.COLOR_SCROLL_THUMB);
+        DropdownUtil.drawScrollbar(graphics,
+            new Rect(trackX, dropdownListTop(), ViewerStyle.SCROLLBAR_WIDTH,
+                dropdownPanelBottom() - dropdownListTop()),
+            filteredRegistryNames().size(), maxRows, dropdownScroll);
     }
 
     /** 右侧滚动条（仅内容超出可视区时显示）。 */
@@ -510,29 +443,20 @@ public class CodecViewerScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         // UNION 类型下拉滚动
-        if (openUnionNode != null && unionDropdownRect != null) {
-            List<String> names = openUnionNode.unionNames();
-            int maxRows = Math.max(0, unionDropdownRect.height()
-                / (ViewerStyle.FIELD_ROW + ViewerStyle.FIELD_GAP));
-            int maxScroll = Math.max(0, names.size() - maxRows);
-            unionDropdownScroll = Math.max(0,
-                Math.min(maxScroll, unionDropdownScroll - (int)delta * ViewerStyle.DROPDOWN_SCROLL_STEP));
-            refreshTree();
+        if (unionDropdown.hasOpen() && unionDropdown.mouseScrolled(delta)) {
             return true;
         }
         if (dropdownOpen) {
             List<String> filtered = filteredRegistryNames();
             int maxRows = dropdownMaxRows();
-            int maxScroll = Math.max(0, filtered.size() - maxRows);
-            dropdownScroll = Math.max(0,
-                Math.min(maxScroll, dropdownScroll - (int)delta * ViewerStyle.DROPDOWN_SCROLL_STEP));
+            dropdownScroll = DropdownUtil.clampScroll(
+                dropdownScroll - (int)delta * ViewerStyle.DROPDOWN_SCROLL_STEP, filtered.size(), maxRows);
             rebuildDropdownList();
             return true;
         }
         int content = root == null ? 0 : root.height();
         int visible = this.height - ViewerStyle.TOP_OFFSET - ViewerStyle.BOTTOM_PADDING;
-        int maxScroll = Math.max(0, content - visible);
-        scroll = Math.max(0, Math.min(maxScroll, scroll - (int)delta * ViewerStyle.SCROLL_STEP));
+        scroll = DropdownUtil.clampScroll(scroll - (int)delta * ViewerStyle.SCROLL_STEP, content, visible);
         refreshTree();
         return true;
     }
@@ -540,15 +464,8 @@ public class CodecViewerScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // 点击 UNION 类型下拉外部关闭
-        if (openUnionNode != null) {
-            boolean insideBtn = unionTypeBtnRect != null && inside(unionTypeBtnRect, mouseX, mouseY);
-            boolean insideDd = unionDropdownRect != null && inside(unionDropdownRect, mouseX, mouseY);
-            if (!insideBtn && !insideDd) {
-                openUnionNode = null;
-                unionDropdownScroll = 0;
-                refreshTree();
-                return true;
-            }
+        if (unionDropdown.handleClickOutside(mouseX, mouseY)) {
+            return true;
         }
         // 点击下拉面板外关闭
         if (dropdownOpen && !isInsideDropdown(mouseX, mouseY)) {
@@ -561,13 +478,9 @@ public class CodecViewerScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    private boolean inside(Rect r, double x, double y) {
-        return r != null && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
-    }
-
     private boolean isInsideDropdown(double x, double y) {
         return x >= dropdownPanelLeft() && x <= dropdownPanelRight()
-            && y >= ViewerStyle.TOP_OFFSET - ViewerStyle.DROPDOWN_PANEL_MARGIN
+            && y >= dropdownListTop() - ViewerStyle.DROPDOWN_PANEL_MARGIN
             && y <= dropdownPanelBottom() + ViewerStyle.DROPDOWN_PANEL_MARGIN;
     }
 

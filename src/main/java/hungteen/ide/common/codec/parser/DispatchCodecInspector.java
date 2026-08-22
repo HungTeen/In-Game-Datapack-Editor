@@ -3,6 +3,8 @@ package hungteen.ide.common.codec.parser;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.Decoder;
 import hungteen.htlib.api.interfaces.IHTCommonRegistry;
+import hungteen.htlib.api.interfaces.IHTCodecRegistry;
+import hungteen.htlib.api.interfaces.IHTRegistry;
 import hungteen.htlib.util.ReflectionUtil;
 import hungteen.ide.common.codec.parser.handler.DispatchCodecHandler;
 import net.minecraft.core.Registry;
@@ -15,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -115,15 +118,39 @@ public final class DispatchCodecInspector {
                 }
             }
 
-            return map;
+            if (!map.isEmpty()) {
+                return map;
+            }
         }
 
-        // 3) HTLib 自定义注册表（byNameCodec 捕获的是 IHTCommonRegistry，非 vanilla Registry）。
-        IHTCommonRegistry<?> htRegistry = findHtRegistry(probe);
+        // 3) HTLib 自定义注册表（byNameCodec 捕获注册表实例；含 HTCommonRegistry 与 HTCodecRegistry）。
+        IHTRegistry<?> htRegistry = findHtRegistry(probe);
 
         if (htRegistry != null) {
 
-            for (Map.Entry<ResourceLocation, ?> entry : htRegistry.getEntries()) {
+            fillFromHtRegistry(map, function, htRegistry);
+
+            if (!map.isEmpty()) {
+                return map;
+            }
+        }
+
+        return map;
+    }
+
+    /**
+     * 从 HTLib 注册表枚举"类型名 → 分支 codec"。
+     *
+     * <p>{@link IHTCommonRegistry} 直接取 {@code getEntries()}；
+     * {@link IHTCodecRegistry}（{@code HTCodecRegistry}，数据包注册表）取缓存键/值。
+     * 名字统一用 {@link ResourceLocation}。</p>
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void fillFromHtRegistry(Map<String, Object> map, Function<?, ?> function, IHTRegistry<?> registry) {
+
+        if (registry instanceof IHTCommonRegistry<?> common) {
+
+            for (Map.Entry<ResourceLocation, ?> entry : common.getEntries()) {
 
                 Object branch = applyDecoder(function, entry.getValue());
 
@@ -131,9 +158,34 @@ public final class DispatchCodecInspector {
                     map.put(entry.getKey().toString(), branch);
                 }
             }
-        }
 
-        return map;
+        } else if (registry instanceof IHTCodecRegistry<?> codecRegistry) {
+
+            Set<ResourceKey<?>> keys = (Set) codecRegistry.getClientKeys();
+
+            if (keys.isEmpty()) {
+
+                // 服务端缓存键兜底。
+                for (ResourceLocation key : (List<ResourceLocation>) codecRegistry.getCachedKeys()) {
+                    keys.add(ResourceKey.create(registry.getRegistryKey(), key));
+                }
+            }
+
+            for (ResourceKey<?> key : keys) {
+
+                Object value = ((IHTCodecRegistry) codecRegistry).getClientOptValue(key).orElse(null);
+
+                if (value == null) {
+                    continue;
+                }
+
+                Object branch = applyDecoder(function, value);
+
+                if (branch != null) {
+                    map.put(key.location().toString(), branch);
+                }
+            }
+        }
     }
 
     /**
@@ -180,8 +232,8 @@ public final class DispatchCodecInspector {
         return null;
     }
 
-    /** BFS 找对象图中的第一个 {@link IHTCommonRegistry} 实例（HTLib 自定义注册表）。 */
-    private static IHTCommonRegistry<?> findHtRegistry(Object root) {
+    /** BFS 找对象图中的第一个 HTLib 注册表实例（{@link IHTRegistry}，含 Common / Codec 两种）。 */
+    private static IHTRegistry<?> findHtRegistry(Object root) {
 
         if (root == null) {
             return null;
@@ -201,7 +253,7 @@ public final class DispatchCodecInspector {
                 continue;
             }
 
-            if (current instanceof IHTCommonRegistry<?> htRegistry) {
+            if (current instanceof IHTRegistry<?> htRegistry) {
                 return htRegistry;
             }
 

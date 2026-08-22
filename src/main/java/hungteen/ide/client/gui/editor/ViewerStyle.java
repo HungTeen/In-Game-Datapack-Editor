@@ -56,8 +56,8 @@ public final class ViewerStyle {
     public static final int DROPDOWN_PANEL_MARGIN = 2;
 
     // ---- 配色 ----
-    /** 字段名文字。 */
-    public static final int COLOR_TEXT = 0xFFFFFF;
+    /** 字段名文字（misode 风格淡蓝）。 */
+    public static final int COLOR_TEXT = 0x9CDCFE;
     /** 层级参考线。 */
     public static final int COLOR_GUIDE = 0x505050;
     /** 状态提示。 */
@@ -83,6 +83,10 @@ public final class ViewerStyle {
     public static final int COLOR_REGISTRY = 0x6ECBFF;
     /** 枚举 / 类型列表。 */
     public static final int COLOR_ENUM = 0xD4A9FF;
+    /** 校验失败（编辑器报错文字）。 */
+    public static final int COLOR_ERROR = 0xFFFF5A5A;
+    /** 校验失败时输入框文字颜色。 */
+    public static final int COLOR_ERROR_VALUE = 0xFFFF4040;
 
     // ---- 行为 ----
     /** 状态提示自动消失时长（毫秒）。 */
