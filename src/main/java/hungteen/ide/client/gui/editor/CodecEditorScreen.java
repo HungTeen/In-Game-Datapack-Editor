@@ -184,7 +184,7 @@ public class CodecEditorScreen extends CodecScreen {
             // TODO 失败
             return;
         }
-        if (ResourceLocation.isValidResourceLocation(this.saveRegistryName)) {
+        if (!ResourceLocation.isValidResourceLocation(this.saveRegistryName)) {
             // TODO 非法注册名
             return;
         }
@@ -221,7 +221,7 @@ public class CodecEditorScreen extends CodecScreen {
     // -------------------------------------------------
 
     public void addButton(int x, int y, int width, String text, Button.OnPress action) {
-        Button b = Button.builder(Component.literal(text), action).bounds(x, y, width, 12).build();
+        Button b = Button.builder(Component.literal(text), action).bounds(x, y, width, 11).build();
         addRenderableWidget(b);
     }
 

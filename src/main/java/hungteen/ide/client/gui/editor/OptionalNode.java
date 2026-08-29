@@ -3,26 +3,19 @@ package hungteen.ide.client.gui.editor;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
-import hungteen.ide.common.codec.parser.SchemaKeys;
 import hungteen.ide.common.codec.parser.SchemaType;
-import net.minecraft.client.resources.language.I18n;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * 可选节点：内层直接内联，不再有"启用/禁用"行。
+ * 可选节点：不再有"启用/禁用"行，按内层形态紧凑展示。
  * <ul>
- *   <li>包裹枚举：折叠成单个循环按钮，首项"不使用"即缺省；</li>
- *   <li>内层标量：与字段名同一行显示控件；</li>
- *   <li>内层结构型：字段名一行标题 + 内层展开。</li>
+ *   <li>内层<b>标量</b>（数字/字符串/枚举/布尔/Holder…）：字段名 + 内层控件内联到<b>同一行</b>；</li>
+ *   <li>内层<b>结构型</b>（RECORD/LIST/MAP/UNION…）：字段名一行标题 + 折叠按钮 [+]/[-]，展开才渲染内层。</li>
  * </ul>
  */
 final class OptionalNode extends EditorFormNode {
 
     private EditorFormNode optionalInner;
-    private boolean optionalPresent;
+    private boolean expanded = false;
 
     OptionalNode(JsonObject schema, String label, JsonElement value) {
         super(schema, label, value);
@@ -31,65 +24,48 @@ final class OptionalNode extends EditorFormNode {
     @Override
     protected void init() {
         JsonObject inner = elementSchema();
-        optionalPresent = value != null && !value.isJsonNull();
         if (inner != null) {
-            optionalInner = EditorFormNode.create(inner, "", optionalPresent ? value : JsonNull.INSTANCE);
+            optionalInner = EditorFormNode.create(inner, "", value);
         }
     }
 
-    /** 内层是枚举：折叠成单按钮。 */
-    private boolean collapsedOptionalEnum() {
+    /** 内层是否结构型（多行、可折叠）。 */
+    private boolean structuralInner() {
         JsonObject inner = elementSchema();
-        return inner != null && typeOf(inner) == SchemaType.ENUM;
+        return inner != null && isStructuralType(typeOf(inner));
     }
 
     @Override
     public int height() {
-        if (collapsedOptionalEnum() || optionalInner == null) {
+        if (optionalInner == null) {
             return ROW_HEIGHT;
         }
-        JsonObject inner = elementSchema();
-        if (inner != null && isStructural(typeOf(inner))) {
-            return ROW_HEIGHT + optionalInner.height();
+        if (structuralInner()) {
+            return ROW_HEIGHT + (expanded ? optionalInner.height() : 0);
         }
-        return optionalInner.height();
+        return ROW_HEIGHT;
     }
 
     @Override
     public int buildControls(CodecEditorScreen screen, int x, int y, int width) {
         validateValue();
-        if (collapsedOptionalEnum()) {
+        if (optionalInner == null) {
+            return y;
+        }
+        if (structuralInner()) {
             if (screen.formRowVisible(y)) {
-                List<String> opts = new ArrayList<>();
-                opts.add(I18n.get("ide.editor.none"));
-                JsonObject inner = elementSchema();
-                if (inner.has(SchemaKeys.ENUM_VALUES)) {
-                    for (JsonElement e : inner.getAsJsonArray(SchemaKeys.ENUM_VALUES)) {
-                        opts.add(e.getAsJsonObject().get(SchemaKeys.SERIALIZED_NAME).getAsString());
-                    }
-                }
-                int cx = x + LABEL_WIDTH;
-                int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
-                int innerIdx = optionalPresent && optionalInner != null ? optionalInner.enumIndex() : -1;
-                screen.addCycleButton(cx, y, cw, opts, innerIdx < 0 ? 0 : innerIdx + 1, i -> {
-                    if (i == 0) {
-                        optionalPresent = false;
-                        optionalInner = null;
-                    } else if (i - 1 < opts.size() - 1) {
-                        optionalPresent = true;
-                        optionalInner = EditorFormNode.create(inner, "", new JsonPrimitive(opts.get(i)));
-                    }
-                    screen.rebuildForm();
+                screen.addButton(x + LABEL_WIDTH, y, 12, expanded ? "-" : "+", b -> {
+                    expanded = !expanded;
+                    // 只重排布局（不重建树、不 reload），否则 rebuildForm 会新建节点导致 expanded 重置。
+                    screen.rebuild();
                 });
+                y += ROW_HEIGHT;
             }
-            y += ROW_HEIGHT;
-        } else if (optionalInner != null) {
-            JsonObject inner = elementSchema();
-            if (inner != null && isStructural(typeOf(inner))) {
+            if (expanded) {
                 y = optionalInner.buildControls(screen, x + INDENT, y, width - INDENT);
-            } else {
-                y = optionalInner.buildInlineControl(screen, x, y, width);
             }
+        } else {
+            y = optionalInner.buildInlineControl(screen, x, y, width);
         }
         return y;
     }
@@ -97,57 +73,43 @@ final class OptionalNode extends EditorFormNode {
     @Override
     public int collectLabels(CodecEditorScreen screen, int x, int y, int width) {
         validateValue();
-        if (collapsedOptionalEnum()) {
+        if (optionalInner == null) {
+            return y;
+        }
+        if (structuralInner()) {
             int cx = x + LABEL_WIDTH;
             int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
             fieldLabel(screen, x, y);
             screen.addTooltipRow(x, y, cx + cw - x, ROW_HEIGHT, tooltipLines());
-            return y + ROW_HEIGHT;
-        }
-        if (optionalInner != null) {
-            JsonObject inner = elementSchema();
-            if (inner != null && isStructural(typeOf(inner))) {
-                int cx = x + LABEL_WIDTH;
-                int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
-                fieldLabel(screen, x, y);
-                screen.addTooltipRow(x, y, cx + cw - x, ROW_HEIGHT, tooltipLines());
-                y += ROW_HEIGHT;
-                return optionalInner.collectLabels(screen, x + INDENT, y, width - INDENT);
+            y += ROW_HEIGHT;
+            if (expanded) {
+                y = optionalInner.collectLabels(screen, x + INDENT, y, width - INDENT);
             }
-            return optionalInner.collectInlineLabels(screen, x, y, width, label);
+        } else {
+            y = optionalInner.collectInlineLabels(screen, x, y, width, label);
         }
         return y;
     }
 
     @Override
     public JsonElement collect() {
-        if (optionalInner == null) {
-            return JsonNull.INSTANCE;
-        }
-        // 可选枚举才可能"不使用"（缺省省略键）；其余可选字段总是输出内层值。
-        if (collapsedOptionalEnum() && !optionalPresent) {
-            return JsonNull.INSTANCE;
-        }
-        return optionalInner.collect();
+        return optionalInner == null ? JsonNull.INSTANCE : optionalInner.collect();
     }
 
     @Override
     public void load(JsonElement json) {
         this.value = json == null ? JsonNull.INSTANCE : json;
-        optionalPresent = this.value != null && !this.value.isJsonNull();
         JsonObject inner = elementSchema();
-        if (inner != null) {
-            optionalInner = EditorFormNode.create(inner, "", optionalPresent ? this.value : JsonNull.INSTANCE);
-        }
+        optionalInner = inner == null ? null : EditorFormNode.create(inner, "", this.value);
     }
 
     @Override
     public boolean isOptionalAndAbsent() {
-        return type() == SchemaType.OPTIONAL && collapsedOptionalEnum() && !optionalPresent;
+        return false;
     }
 
-    private static boolean isStructural(SchemaType t) {
-        return switch (t) {
+    private static boolean isStructuralType(SchemaType type) {
+        return switch (type) {
             case RECORD, LIST, SET, MAP, OPTIONAL, UNION, EITHER -> true;
             default -> false;
         };

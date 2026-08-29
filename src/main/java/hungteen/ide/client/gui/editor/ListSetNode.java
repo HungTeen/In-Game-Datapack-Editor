@@ -46,16 +46,18 @@ final class ListSetNode extends EditorFormNode {
         validateValue();
         int cx = x + LABEL_WIDTH;
         if (screen.formRowVisible(y)) {
-            screen.addButton(cx, y, 20, "+", b -> {
+            screen.addButton(cx, y, 12, "+", b -> {
                 listItems.add(EditorFormNode.create(elementSchema(), "", JsonNull.INSTANCE));
-                screen.rebuildForm();
+                screen.rebuild();
             });
-            screen.addButton(cx + 22, y, 20, "-", b -> {
-                if (!listItems.isEmpty()) {
-                    listItems.remove(listItems.size() - 1);
-                    screen.rebuildForm();
-                }
-            });
+            if (!listItems.isEmpty()) {
+                screen.addButton(cx + 12 + 3, y, 12, "-", b -> {
+                    if (!listItems.isEmpty()) {
+                        listItems.remove(listItems.size() - 1);
+                        screen.rebuild();
+                    }
+                });
+            }
         }
         y += ROW_HEIGHT;
         for (EditorFormNode item : listItems) {

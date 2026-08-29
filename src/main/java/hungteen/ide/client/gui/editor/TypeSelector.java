@@ -86,6 +86,11 @@ public TypeSelector(Screen host, Consumer<AbstractWidget> addWidget, int x, int 
             ignoreResponder = true;
             box.setValue(current);
             ignoreResponder = false;
+            if (StringUtils.isBlank(current)) {
+                box.setSuggestion(I18n.get("ide.screen.type_hint"));
+            } else {
+                box.setSuggestion(null);
+            }
         }
     }
 

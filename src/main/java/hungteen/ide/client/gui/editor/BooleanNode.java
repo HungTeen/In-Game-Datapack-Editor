@@ -29,7 +29,7 @@ final class BooleanNode extends EditorFormNode {
             boolean cur = value != null && value.isJsonPrimitive() && value.getAsBoolean();
             screen.addButton(cx, y, cw, String.valueOf(cur), b -> {
                 value = new JsonPrimitive(!cur);
-                screen.rebuildForm();
+                screen.rebuild();
             });
         }
         return y + ROW_HEIGHT;

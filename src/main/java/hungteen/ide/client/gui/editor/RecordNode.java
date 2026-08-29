@@ -3,6 +3,7 @@ package hungteen.ide.client.gui.editor;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import hungteen.ide.common.codec.parser.SchemaKeys;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,16 +41,25 @@ final class RecordNode extends EditorFormNode {
 
     @Override
     public int buildControls(CodecEditorScreen screen, int x, int y, int width) {
+        // 渲染 type 行
+        if (StringUtils.isNoneBlank(label)) {
+            y += ROW_HEIGHT;
+        }
         for (EditorFormNode child : recordChildren) {
-            y = child.buildControls(screen, x, y, width - INDENT);
+            y = child.buildControls(screen, x + INDENT, y, width - INDENT);
         }
         return y;
     }
 
     @Override
     public int collectLabels(CodecEditorScreen screen, int x, int y, int width) {
+        // 渲染 type 行
+        if (StringUtils.isNoneBlank(label)) {
+            fieldLabel(screen, x, y);
+            y += ROW_HEIGHT;
+        }
         for (EditorFormNode child : recordChildren) {
-            y = child.collectLabels(screen, x, y, width - INDENT);
+            y = child.collectLabels(screen, x + INDENT, y, width - INDENT);
         }
         return y;
     }

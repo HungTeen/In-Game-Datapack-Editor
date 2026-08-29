@@ -66,6 +66,7 @@ public abstract class EditorFormNode {
             case UNION, EITHER -> new UnionNode(schema, label, value);
             case ENUM -> new EnumNode(schema, label, value);
             case BOOLEAN -> new BooleanNode(schema, label, value);
+            case HOLDER, HOLDER_SET -> new HolderNode(schema, label, value);
             default -> new ScalarNode(schema, label, value);
         };
         node.init();

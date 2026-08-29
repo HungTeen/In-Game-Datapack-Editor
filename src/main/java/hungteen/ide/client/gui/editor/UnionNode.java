@@ -59,13 +59,16 @@ final class UnionNode extends EditorFormNode {
                     ? unionNames.get(unionIndex) : "";
                 screen.addSelector(cx, y, cw,  ROW_HEIGHT - 2, unionNames, current, i -> {
                     selectVariant(i);
-                    screen.rebuildForm();
+                    screen.rebuild();
                 });
             }
             y += ROW_HEIGHT;
+
+            // 构建 type -> codec 的控件
             EditorFormNode selected = unionVariants.get(unionIndex);
             if (selected != null) {
-                y = selected.buildControls(screen, x + INDENT, y, width - INDENT);
+                // 往左偏移，因为渲染 Record 会往右偏移，但是 type 应该是同层级的
+                y = selected.buildControls(screen, x - INDENT, y, width + INDENT);
             }
         }
         return y;
@@ -82,7 +85,8 @@ final class UnionNode extends EditorFormNode {
             y += ROW_HEIGHT;
             EditorFormNode selected = unionVariants.get(unionIndex);
             if (selected != null) {
-                y = selected.collectLabels(screen, x, y, width);
+                // 往左偏移，因为渲染 Record 会往右偏移，但是 type 应该是同层级的
+                y = selected.collectLabels(screen, x - INDENT, y, width + INDENT);
             }
         }
         return y;
