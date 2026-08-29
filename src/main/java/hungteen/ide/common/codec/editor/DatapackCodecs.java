@@ -1,12 +1,13 @@
-package hungteen.ide.common.codec.parser;
+package hungteen.ide.common.codec.editor;
 
 import com.mojang.serialization.Codec;
-import hungteen.htlib.common.registry.HTRegistryManager;
+import hungteen.ide.common.codec.parser.CodecSchemaParser;
 import net.minecraft.resources.RegistryDataLoader;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.registries.DataPackRegistriesHooks;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -36,36 +37,16 @@ public final class DatapackCodecs {
      *
      * <p>重复注册名按"原版优先"合并：先放原版，再放 HTLib；同名的后者会覆盖前者。</p>
      */
-    public static List<Entry> getDatapackCodecs() {
-
-        List<Entry> entries = new ArrayList<>();
-
-        RegistryDataLoader.WORLDGEN_REGISTRIES.forEach(data ->
-            entries.add(new Entry(data.key().location(), data.elementCodec()))
-        );
-
-        RegistryDataLoader.DIMENSION_REGISTRIES.forEach(data ->
-            entries.add(new Entry(data.key().location(), data.elementCodec()))
-        );
-
-        HTRegistryManager.getRegistries().forEach(registry ->
-            entries.add(new Entry(registry.getRegistryName(), registry.getCodec()))
-        );
-
-        return entries;
+    public static List<RegistryDataLoader.RegistryData<?>> getDatapackCodecs() {
+        return DataPackRegistriesHooks.getDataPackRegistriesWithDimensions().toList();
     }
 
     /**
      * 按注册名查 codec；不存在返回 empty。
      */
     public static Optional<? extends Codec<?>> getCodec(ResourceLocation name) {
-        return getDatapackCodecs().stream()
-            .filter(entry -> entry.name().equals(name))
-            .map(Entry::codec)
-            .findFirst();
+        return getDatapackCodecs().stream().filter(entry -> Objects.equals(entry.key().location(), name))
+            .map(RegistryDataLoader.RegistryData::elementCodec).findFirst();
     }
 
-    /** 一个（注册名 → codec）条目。 */
-    public record Entry(ResourceLocation name, Codec<?> codec) {
-    }
 }

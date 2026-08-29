@@ -25,10 +25,8 @@ public class IDENetworkHandler {
             NetworkRegistry.ChannelBuilder.named(IDEHelper.prefix("networking")).networkProtocolVersion(() -> "1.0")
                 .clientAcceptedVersions(s -> true).serverAcceptedVersions(s -> true).simpleChannel();
 
-        CHANNEL.registerMessage(getId(), OpenEditorPacket.class, OpenEditorPacket::encode, OpenEditorPacket::new,
-            OpenEditorPacket.Handler::onMessage);
-        CHANNEL.registerMessage(getId(), OpenViewerPacket.class, OpenViewerPacket::encode, OpenViewerPacket::new,
-            OpenViewerPacket.Handler::onMessage);
+        CHANNEL.registerMessage(getId(), OpenCodecPacket.class, OpenCodecPacket::encode, OpenCodecPacket::new,
+            OpenCodecPacket.Handler::onMessage);
         CHANNEL.registerMessage(getId(), RequestSchemaPacket.class, RequestSchemaPacket::encode,
             RequestSchemaPacket::new, RequestSchemaPacket.Handler::onMessage);
         CHANNEL.registerMessage(getId(), SchemaResponsePacket.class, SchemaResponsePacket::encode,

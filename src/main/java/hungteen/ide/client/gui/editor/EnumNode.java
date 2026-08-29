@@ -42,7 +42,8 @@ final class EnumNode extends EditorFormNode {
         int cx = x + LABEL_WIDTH;
         int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
         if (screen.formRowVisible(y)) {
-            screen.addCycleButton(cx, y, cw, enumValues, enumIndex, i -> enumIndex = i);
+            String current = enumIndex >= 0 && enumIndex < enumValues.size() ? enumValues.get(enumIndex) : "";
+            screen.addSelector(cx, y, cw,  ROW_HEIGHT - 2, enumValues, current, i -> enumIndex = i);
         }
         return y + ROW_HEIGHT;
     }
@@ -61,7 +62,8 @@ final class EnumNode extends EditorFormNode {
         int cx = x + LABEL_WIDTH;
         int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
         if (screen.formRowVisible(y)) {
-            screen.addCycleButton(cx, y, cw, enumValues, enumIndex, i -> enumIndex = i);
+            String current = enumIndex >= 0 && enumIndex < enumValues.size() ? enumValues.get(enumIndex) : "";
+            screen.addSelector(cx, y, cw, ROW_HEIGHT - 2, enumValues, current, i -> enumIndex = i);
         }
         return y + ROW_HEIGHT;
     }

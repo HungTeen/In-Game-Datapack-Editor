@@ -41,8 +41,7 @@ final class RecordNode extends EditorFormNode {
     @Override
     public int buildControls(CodecEditorScreen screen, int x, int y, int width) {
         for (EditorFormNode child : recordChildren) {
-            int indent = x + INDENT;
-            y = child.buildControls(screen, indent, y, width - INDENT);
+            y = child.buildControls(screen, x, y, width - INDENT);
         }
         return y;
     }
@@ -50,8 +49,7 @@ final class RecordNode extends EditorFormNode {
     @Override
     public int collectLabels(CodecEditorScreen screen, int x, int y, int width) {
         for (EditorFormNode child : recordChildren) {
-            int indent = x + INDENT;
-            y = child.collectLabels(screen, indent, y, width - INDENT);
+            y = child.collectLabels(screen, x, y, width - INDENT);
         }
         return y;
     }

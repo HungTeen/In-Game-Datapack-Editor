@@ -22,7 +22,7 @@ final class UnionNode extends EditorFormNode {
     private int unionIndex = 0;
 
     UnionNode(JsonObject schema, String label, JsonElement value) {
-        super(schema, label, value);
+        super(schema, DEFAULT_VARIANT_KEY, value);
     }
 
     @Override
@@ -55,21 +55,17 @@ final class UnionNode extends EditorFormNode {
             int cx = x + LABEL_WIDTH;
             int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
             if (screen.formRowVisible(y)) {
-                String currentName = unionIndex >= 0 && unionIndex < unionNames.size()
+                String current = unionIndex >= 0 && unionIndex < unionNames.size()
                     ? unionNames.get(unionIndex) : "";
-                screen.addUnionTypeButton(this, cx, y, cw, currentName);
-                if (screen.isUnionDropdownOpen(this)) {
-                    screen.addUnionDropdownButtons(this, cx,
-                        y + ViewerStyle.ROW_HEIGHT + ViewerStyle.FIELD_GAP, cw);
-                }
+                screen.addSelector(cx, y, cw,  ROW_HEIGHT - 2, unionNames, current, i -> {
+                    selectVariant(i);
+                    screen.rebuildForm();
+                });
             }
             y += ROW_HEIGHT;
-            // 类型下拉展开时隐藏下方分支字段，避免透过面板显示
-            if (!screen.isUnionDropdownOpen(this)) {
-                EditorFormNode selected = unionVariants.get(unionIndex);
-                if (selected != null) {
-                    y = selected.buildControls(screen, x + INDENT, y, width - INDENT);
-                }
+            EditorFormNode selected = unionVariants.get(unionIndex);
+            if (selected != null) {
+                y = selected.buildControls(screen, x + INDENT, y, width - INDENT);
             }
         }
         return y;
@@ -80,14 +76,13 @@ final class UnionNode extends EditorFormNode {
         if (!unionVariants.isEmpty()) {
             int cx = x + LABEL_WIDTH;
             int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
+            // 渲染 type 行
             fieldLabel(screen, x, y);
             screen.addTooltipRow(x, y, cx + cw - x, ROW_HEIGHT, tooltipLines());
             y += ROW_HEIGHT;
-            if (!screen.isUnionDropdownOpen(this)) {
-                EditorFormNode selected = unionVariants.get(unionIndex);
-                if (selected != null) {
-                    y = selected.collectLabels(screen, x + INDENT, y, width - INDENT);
-                }
+            EditorFormNode selected = unionVariants.get(unionIndex);
+            if (selected != null) {
+                y = selected.collectLabels(screen, x, y, width);
             }
         }
         return y;

@@ -4,6 +4,7 @@
   "ide.screen.type": "数据包类型: %s",
   "ide.screen.none": "(未选择)",
   "ide.screen.search": "搜索",
+  "ide.screen.type_hint": "类型…",
   "ide.screen.form": "表单模式",
   "ide.screen.json": "JSON 模式",
   "ide.screen.path": "路径",

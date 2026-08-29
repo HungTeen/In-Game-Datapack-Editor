@@ -65,9 +65,11 @@ public final class ViewerStyle {
     /** 滚动条轨道 / 滑块。 */
     public static final int COLOR_SCROLL_TRACK = 0x30000000;
     public static final int COLOR_SCROLL_THUMB = 0xFFA0A0A0;
-    /** 下拉面板背景 / 边框。 */
-    public static final int COLOR_DROPDOWN_BG = 0xC0101010;
+    /** 下拉/补全面板背景 / 边框。背景必须不透明，遮住其下方的字段。 */
+    public static final int COLOR_DROPDOWN_BG = 0xFF101010;
     public static final int COLOR_DROPDOWN_BORDER = 0xFF6E6E6E;
+    /** 补全面板选中行高亮。 */
+    public static final int COLOR_SELECT = 0x50FFFFFF;
 
     // ---- 悬浮提示配色 ----
     /** 类型 / 次要信息。 */

@@ -4,8 +4,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import hungteen.ide.common.codec.parser.CodecSchemaParser;
 import hungteen.ide.common.codec.parser.DataSchema;
-import hungteen.ide.common.codec.parser.DatapackCodecs;
 import hungteen.ide.common.codec.parser.SchemaPrinter;
+import net.minecraft.resources.RegistryDataLoader;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,10 +30,10 @@ public final class CodecEditorManager {
     }
 
     /** 所有可编辑的数据包注册表名字。 */
-    public static List<String> getRegistryNames() {
+    public static List<ResourceLocation> getRegistryNames() {
         return DatapackCodecs.getDatapackCodecs().stream()
-                .map(DatapackCodecs.Entry::name)
-                .map(name -> name.toString())
+                .map(RegistryDataLoader.RegistryData::key)
+                .map(ResourceKey::location)
                 .toList();
     }
 

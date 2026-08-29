@@ -4,6 +4,7 @@
   "ide.screen.type": "Datapack type: %s",
   "ide.screen.none": "(none)",
   "ide.screen.search": "Search",
+  "ide.screen.type_hint": "type…",
   "ide.screen.form": "Form mode",
   "ide.screen.json": "JSON mode",
   "ide.screen.path": "Path",

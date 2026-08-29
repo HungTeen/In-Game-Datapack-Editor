@@ -1,8 +1,6 @@
 package hungteen.ide.common.network;
 
-import hungteen.htlib.client.util.ClientHelper;
-import hungteen.ide.client.gui.editor.CodecEditorScreen;
-import hungteen.ide.client.gui.editor.CodecViewerScreen;
+import hungteen.ide.client.gui.editor.CodecScreen;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -37,13 +35,7 @@ public class SchemaResponsePacket {
 
     public static class Handler {
         public static void onMessage(SchemaResponsePacket message, Supplier<NetworkEvent.Context> ctx) {
-            ctx.get().enqueueWork(() -> {
-                if (ClientHelper.screen() instanceof CodecViewerScreen) {
-                    CodecViewerScreen.onSchema(message.registryName, message.schemaJson);
-                } else {
-                    CodecEditorScreen.onSchema(message.registryName, message.schemaJson);
-                }
-            });
+            ctx.get().enqueueWork(() -> CodecScreen.onSchema(message.registryName, message.schemaJson));
             ctx.get().setPacketHandled(true);
         }
     }

@@ -8,10 +8,10 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.serialization.Codec;
 import hungteen.ide.common.IDEHelper;
 import hungteen.ide.common.codec.editor.CodecEditorManager;
+import hungteen.ide.common.codec.editor.DatapackCodecs;
 import hungteen.ide.common.codec.parser.*;
 import hungteen.ide.common.network.IDENetworkHandler;
-import hungteen.ide.common.network.OpenEditorPacket;
-import hungteen.ide.common.network.OpenViewerPacket;
+import hungteen.ide.common.network.OpenCodecPacket;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -38,7 +39,7 @@ public class IDECommand {
     private static final SuggestionProvider<CommandSourceStack> ALL_DATAPACK_CODECS =
         SuggestionProviders.register(IDEHelper.prefix("all_datapack_codecs"), (commandContext, builder) -> {
             return SharedSuggestionProvider.suggestResource(
-                DatapackCodecs.getDatapackCodecs().stream().map(DatapackCodecs.Entry::name), builder);
+                CodecEditorManager.getRegistryNames().stream(), builder);
         });
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext buildContext) {
@@ -145,13 +146,13 @@ public class IDECommand {
     /**
      * 打开 Codec 编辑器界面。
      *
-     * <p>服务端收集全部数据包注册表名，通过 {@link OpenEditorPacket}
+     * <p>服务端收集全部数据包注册表名，通过 {@link OpenCodecPacket}
      * 发给客户端打开界面。</p>
      */
     public static int openEditor(CommandSourceStack source) throws CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
-        java.util.List<String> names = CodecEditorManager.getRegistryNames();
-        IDENetworkHandler.sendToClient(player, new OpenEditorPacket(names));
+        List<ResourceLocation> names = CodecEditorManager.getRegistryNames();
+        IDENetworkHandler.sendToClient(player, new OpenCodecPacket(names, "", OpenCodecPacket.Mode.EDITOR));
         source.sendSuccess(() -> Component.literal("已打开 Codec 编辑器"), true);
         return 1;
     }
@@ -163,9 +164,9 @@ public class IDECommand {
      */
     public static int openViewer(CommandSourceStack source, ResourceLocation registry) throws CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
-        java.util.List<String> names = CodecEditorManager.getRegistryNames();
+        List<ResourceLocation> names = CodecEditorManager.getRegistryNames();
         String preselect = registry != null ? registry.toString() : "";
-        IDENetworkHandler.sendToClient(player, new OpenViewerPacket(names, preselect));
+        IDENetworkHandler.sendToClient(player, new OpenCodecPacket(names, preselect, OpenCodecPacket.Mode.VIEWER));
         source.sendSuccess(() -> Component.literal("已打开 Codec 字段查看器"), true);
         return 1;
     }
