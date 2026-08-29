@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import hungteen.ide.common.codec.parser.SchemaKeys;
 import hungteen.ide.common.codec.parser.SchemaType;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -36,10 +37,6 @@ import java.util.List;
 public class ViewerNode {
 
     // ---- 提示文本 ----
-    private static final String ELEMENT_LABEL = "元素";
-    private static final String KEY_LABEL = "键";
-    private static final String VALUE_LABEL = "值";
-    private static final String UNION_FALLBACK_LABEL = "多态";
     private static final String VARIANT_FALLBACK_PREFIX = "分支";
     private static final String DEFAULT_VARIANT_KEY = "type";
 
@@ -156,7 +153,8 @@ public class ViewerNode {
         switch (type) {
             case UNION, EITHER -> {
                 int rowY = y;
-                List<Seg> segs = List.of(new Seg(label.isEmpty() ? UNION_FALLBACK_LABEL : label, ViewerStyle.COLOR_TEXT));
+                List<Seg> segs = List.of(new Seg(label.isEmpty() ? I18n.get("ide.tree.polymorphic") : label,
+                    ViewerStyle.COLOR_TEXT));
                 int endX = drawLine(screen, indent, rowY, segs, screen.isRowInView(rowY));
                 int buttonX = endX + ViewerStyle.TOGGLE_GAP;
                 int typeBtnX = indent + labelWidth;
@@ -320,7 +318,7 @@ public class ViewerNode {
             head = Component.literal(label).withStyle(st -> st.withColor(ViewerStyle.COLOR_TEXT));
             if (fieldMeta != null && fieldMeta.has(SchemaKeys.REQUIRED)) {
                 boolean req = fieldMeta.get(SchemaKeys.REQUIRED).getAsBoolean();
-                head.append(Component.literal(req ? " [必填]" : " [可选]")
+                head.append(Component.translatable(req ? "ide.tooltip.required" : "ide.tooltip.optional")
                     .withStyle(st -> st.withColor(req ? ViewerStyle.COLOR_REQUIRED : ViewerStyle.COLOR_OPTIONAL)));
             }
             head.append(Component.literal(": " + type().name()).withStyle(st -> st.withColor(ViewerStyle.COLOR_TYPE)));
@@ -333,16 +331,16 @@ public class ViewerNode {
 
         if (schema.has(SchemaKeys.REGISTRY)) {
             JsonObject reg = schema.getAsJsonObject(SchemaKeys.REGISTRY);
-            String t = "注册表: " + reg.get(SchemaKeys.REGISTRY).getAsString();
+            String t = I18n.get("ide.tooltip.registry", reg.get(SchemaKeys.REGISTRY).getAsString());
             if (reg.has(SchemaKeys.ALLOW_TAG) && reg.get(SchemaKeys.ALLOW_TAG).getAsBoolean()) {
-                t += " (+tag)";
+                t += I18n.get("ide.tooltip.tag");
             }
             lines.add(line(t, ViewerStyle.COLOR_REGISTRY));
         }
 
         String constraints = formatConstraints(schema);
         if (!constraints.isEmpty()) {
-            lines.add(line("约束: " + constraints, ViewerStyle.COLOR_CONSTRAINT));
+            lines.add(line(I18n.get("ide.tooltip.constraints", constraints), ViewerStyle.COLOR_CONSTRAINT));
         }
 
         String def = defaultOf(fieldMeta);
@@ -350,35 +348,36 @@ public class ViewerNode {
             def = defaultOf(schema);
         }
         if (!def.isEmpty()) {
-            lines.add(line("默认: " + def, ViewerStyle.COLOR_DEFAULT));
+            lines.add(line(I18n.get("ide.tooltip.default", def), ViewerStyle.COLOR_DEFAULT));
         }
 
         if (schema.has(SchemaKeys.ENUM_VALUES)) {
             JsonArray evs = schema.getAsJsonArray(SchemaKeys.ENUM_VALUES);
             if (evs.size() > 0) {
-                StringBuilder sb = new StringBuilder("取值: ");
-                int shown = Math.min(evs.size(), TOOLTIP_ENUM_SHOWN);
-                for (int i = 0; i < shown; i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(evs.get(i).getAsJsonObject().get(SchemaKeys.SERIALIZED_NAME).getAsString());
+                StringBuilder shown = new StringBuilder();
+                int limit = Math.min(evs.size(), TOOLTIP_ENUM_SHOWN);
+                for (int i = 0; i < limit; i++) {
+                    if (i > 0) shown.append(", ");
+                    shown.append(evs.get(i).getAsJsonObject().get(SchemaKeys.SERIALIZED_NAME).getAsString());
                 }
-                if (evs.size() > shown) sb.append("… (共 ").append(evs.size()).append(" 个)");
-                lines.add(line(sb.toString(), ViewerStyle.COLOR_ENUM));
+                if (evs.size() > limit) shown.append(I18n.get("ide.tooltip.enum_more", evs.size()));
+                lines.add(line(I18n.get("ide.tooltip.enum", shown.toString()), ViewerStyle.COLOR_ENUM));
             }
         }
 
         switch (type()) {
-            case LIST, SET, OPTIONAL -> appendChildTooltip(lines, SchemaKeys.ELEMENT, ELEMENT_LABEL);
+            case LIST, SET, OPTIONAL ->
+                appendChildTooltip(lines, SchemaKeys.ELEMENT, I18n.get("ide.tooltip.element"));
             case MAP -> {
-                appendChildTooltip(lines, SchemaKeys.KEY, KEY_LABEL);
-                appendChildTooltip(lines, SchemaKeys.VALUE, VALUE_LABEL);
+                appendChildTooltip(lines, SchemaKeys.KEY, I18n.get("ide.tooltip.key"));
+                appendChildTooltip(lines, SchemaKeys.VALUE, I18n.get("ide.tooltip.value"));
             }
             case UNION, EITHER -> {
                 if (variantKey != null) {
-                    lines.add(line("分派键: " + variantKey, ViewerStyle.COLOR_TYPE));
+                    lines.add(line(I18n.get("ide.tooltip.variant_key", variantKey), ViewerStyle.COLOR_TYPE));
                 }
                 if (!unionNames.isEmpty()) {
-                    lines.add(line("类型(" + unionNames.size() + "): " + String.join(", ", unionNames),
+                    lines.add(line(I18n.get("ide.tooltip.types", unionNames.size(), String.join(", ", unionNames)),
                         ViewerStyle.COLOR_ENUM));
                 }
             }
@@ -393,7 +392,7 @@ public class ViewerNode {
         if (!schema.has(key)) return;
         JsonObject child = schema.getAsJsonObject(key);
         if (isStructural(typeOf(child))) return;
-        lines.add(line(role + ": " + typeOf(child).name(), ViewerStyle.COLOR_TYPE));
+        lines.add(line(I18n.get("ide.tooltip.role", role, typeOf(child).name()), ViewerStyle.COLOR_TYPE));
         StringBuilder sb = new StringBuilder();
         if (child.has(SchemaKeys.JAVA_TYPE)) {
             sb.append(child.get(SchemaKeys.JAVA_TYPE).getAsString());
@@ -401,12 +400,12 @@ public class ViewerNode {
         String cc = formatConstraints(child);
         if (!cc.isEmpty()) {
             if (sb.length() > 0) sb.append("  ");
-            sb.append("约束: ").append(cc);
+            sb.append(I18n.get("ide.tooltip.constraints", cc));
         }
         String cd = defaultOf(child);
         if (!cd.isEmpty()) {
             if (sb.length() > 0) sb.append("  ");
-            sb.append("默认: ").append(cd);
+            sb.append(I18n.get("ide.tooltip.default", cd));
         }
         if (sb.length() > 0) {
             lines.add(line(sb.toString(), ViewerStyle.COLOR_TYPE));

@@ -5,6 +5,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import hungteen.ide.common.codec.parser.SchemaKeys;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -87,17 +88,17 @@ final class EnumNode extends EditorFormNode {
         if (enumValues.isEmpty()) {
             return;
         }
-        StringBuilder sb = new StringBuilder("取值: ");
-        int shown = Math.min(enumValues.size(), 20);
-        for (int i = 0; i < shown; i++) {
+        StringBuilder shown = new StringBuilder();
+        int limit = Math.min(enumValues.size(), 20);
+        for (int i = 0; i < limit; i++) {
             if (i > 0) {
-                sb.append(", ");
+                shown.append(", ");
             }
-            sb.append(enumValues.get(i));
+            shown.append(enumValues.get(i));
         }
-        if (enumValues.size() > shown) {
-            sb.append("… (共 ").append(enumValues.size()).append(" 个)");
+        if (enumValues.size() > limit) {
+            shown.append(I18n.get("ide.tooltip.enum_more", enumValues.size()));
         }
-        lines.add(line(sb.toString(), ViewerStyle.COLOR_ENUM));
+        lines.add(line(I18n.get("ide.tooltip.enum", shown.toString()), ViewerStyle.COLOR_ENUM));
     }
 }

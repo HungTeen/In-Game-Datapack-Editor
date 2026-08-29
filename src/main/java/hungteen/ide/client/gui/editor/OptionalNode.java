@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import hungteen.ide.common.codec.parser.SchemaKeys;
 import hungteen.ide.common.codec.parser.SchemaType;
+import net.minecraft.client.resources.language.I18n;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,7 +61,7 @@ final class OptionalNode extends EditorFormNode {
         if (collapsedOptionalEnum()) {
             if (screen.formRowVisible(y)) {
                 List<String> opts = new ArrayList<>();
-                opts.add(EMPTY_ENUM_LABEL);
+                opts.add(I18n.get("ide.editor.none"));
                 JsonObject inner = elementSchema();
                 if (inner.has(SchemaKeys.ENUM_VALUES)) {
                     for (JsonElement e : inner.getAsJsonArray(SchemaKeys.ENUM_VALUES)) {

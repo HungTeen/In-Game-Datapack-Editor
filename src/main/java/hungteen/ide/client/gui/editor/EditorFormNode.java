@@ -5,6 +5,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import hungteen.ide.common.codec.parser.SchemaKeys;
 import hungteen.ide.common.codec.parser.SchemaType;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -34,8 +35,6 @@ public abstract class EditorFormNode {
     static final int CONTROL_MIN_WIDTH = 40;
     /** 结构型子结构缩进。 */
     static final int INDENT = 6;
-    /** 可选枚举折叠按钮里的"不使用"项。 */
-    static final String EMPTY_ENUM_LABEL = "不使用";
 
     protected final JsonObject schema;
     protected final String label;
@@ -53,12 +52,13 @@ public abstract class EditorFormNode {
         if (this.value == null) {
             this.value = JsonNull.INSTANCE;
         }
-        init();
+        // 注意：不能在构造函数里调用虚方法 init()——子类字段此时尚未初始化（多态构造陷阱），
+        // 由工厂在构造完成后再调用。
     }
 
-    /** 工厂：按 schema 类型创建对应节点子类。 */
+    /** 工厂：按 schema 类型创建对应节点子类（构造完成后调用 init 填充子结构）。 */
     public static EditorFormNode create(JsonObject schema, String label, JsonElement value) {
-        return switch (typeOf(schema)) {
+        EditorFormNode node = switch (typeOf(schema)) {
             case RECORD -> new RecordNode(schema, label, value);
             case LIST, SET -> new ListSetNode(schema, label, value);
             case MAP -> new MapNode(schema, label, value);
@@ -68,6 +68,8 @@ public abstract class EditorFormNode {
             case BOOLEAN -> new BooleanNode(schema, label, value);
             default -> new ScalarNode(schema, label, value);
         };
+        node.init();
+        return node;
     }
 
     /** 根节点便捷构造。 */
@@ -192,20 +194,20 @@ public abstract class EditorFormNode {
 
         if (schema.has(SchemaKeys.REGISTRY)) {
             JsonObject reg = schema.getAsJsonObject(SchemaKeys.REGISTRY);
-            String t = "注册表: " + reg.get(SchemaKeys.REGISTRY).getAsString();
+            String t = I18n.get("ide.tooltip.registry", reg.get(SchemaKeys.REGISTRY).getAsString());
             if (reg.has(SchemaKeys.ALLOW_TAG) && reg.get(SchemaKeys.ALLOW_TAG).getAsBoolean()) {
-                t += " (+tag)";
+                t += I18n.get("ide.tooltip.tag");
             }
             lines.add(line(t, ViewerStyle.COLOR_REGISTRY));
         }
 
         String cc = SchemaTooltip.formatConstraints(schema);
         if (!cc.isEmpty()) {
-            lines.add(line("约束: " + cc, ViewerStyle.COLOR_CONSTRAINT));
+            lines.add(line(I18n.get("ide.tooltip.constraints", cc), ViewerStyle.COLOR_CONSTRAINT));
         }
         String def = SchemaTooltip.defaultText(schema);
         if (!def.isEmpty()) {
-            lines.add(line("默认: " + def, ViewerStyle.COLOR_DEFAULT));
+            lines.add(line(I18n.get("ide.tooltip.default", def), ViewerStyle.COLOR_DEFAULT));
         }
 
         appendTypeInfo(lines);

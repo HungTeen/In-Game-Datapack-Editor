@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import hungteen.ide.common.codec.parser.SchemaKeys;
+import net.minecraft.client.resources.language.I18n;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -109,7 +110,7 @@ final class ListSetNode extends EditorFormNode {
                 "", listItems.size());
             if (err != null) {
                 invalid = true;
-                errorMessage = "值不满足约束 " + err;
+                errorMessage = I18n.get("ide.error.constraint", err);
                 return;
             }
         }

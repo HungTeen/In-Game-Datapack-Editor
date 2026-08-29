@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -72,7 +73,7 @@ public class CodecViewerScreen extends Screen {
     private final List<TooltipRow> tooltipRows = new ArrayList<>();
 
     public CodecViewerScreen(List<String> registryNames, String preselect) {
-        super(Component.literal("Codec 字段查看器"));
+        super(Component.translatable("ide.screen.viewer.title"));
         this.registryNames = new ArrayList<>(registryNames);
         this.selected = preselect == null ? "" : preselect;
         this.labelQueue = new LabelQueue();
@@ -85,7 +86,7 @@ public class CodecViewerScreen extends Screen {
         // 预选了注册表：直接请求 schema。
         if (!selected.isEmpty()) {
             IDENetworkHandler.sendToServer(new RequestSchemaPacket(selected));
-            setStatus("请求 " + selected + " schema...");
+            setStatus(I18n.get("ide.screen.request_schema", selected));
         }
     }
 
@@ -105,8 +106,9 @@ public class CodecViewerScreen extends Screen {
         dropdownButtons.clear();
 
         // 顶部下拉框按钮
+        String selectedText = selected.isEmpty() ? I18n.get("ide.screen.none") : selected;
         Button typeButton = Button.builder(
-            Component.literal("数据包类型: " + (selected.isEmpty() ? "(未选择)" : selected)), b -> {
+            Component.translatable("ide.screen.type", selectedText), b -> {
                 dropdownOpen = !dropdownOpen;
                 if (!dropdownOpen) {
                     dropdownFilter = "";
@@ -164,7 +166,7 @@ public class CodecViewerScreen extends Screen {
     private void rebuildSearchBox() {
         if (searchBox == null) {
             searchBox = new EditBox(this.font, ViewerStyle.LEFT_PADDING, ViewerStyle.TOP_OFFSET,
-                ViewerStyle.TYPE_DROPDOWN_WIDTH, ViewerStyle.DROPDOWN_SEARCH_HEIGHT, Component.literal("搜索"));
+                ViewerStyle.TYPE_DROPDOWN_WIDTH, ViewerStyle.DROPDOWN_SEARCH_HEIGHT, Component.translatable("ide.screen.search"));
             searchBox.setMaxLength(64);
             searchBox.setResponder(text -> {
                 if (ignoreSearchResponder) {
@@ -224,7 +226,7 @@ public class CodecViewerScreen extends Screen {
         dropdownScroll = 0;
         unionDropdown.close();
         IDENetworkHandler.sendToServer(new RequestSchemaPacket(name));
-        setStatus("请求 " + name + " schema...");
+        setStatus(I18n.get("ide.screen.request_schema", name));
         rebuild();
     }
 
@@ -232,11 +234,11 @@ public class CodecViewerScreen extends Screen {
         try {
             this.root = ViewerNode.root(JsonParser.parseString(schemaJson).getAsJsonObject());
             unionDropdown.close();
-            setStatus("已加载 " + selected);
+            setStatus(I18n.get("ide.screen.loaded_schema", selected));
             scroll = 0;
             rebuild();
         } catch (Exception e) {
-            setStatus("schema 解析失败: " + e.getMessage());
+            setStatus(I18n.get("ide.screen.schema_error", e.getMessage()));
             rebuild();
         }
     }

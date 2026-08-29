@@ -3,6 +3,7 @@ package hungteen.ide.client.gui.editor;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import hungteen.ide.common.codec.parser.SchemaKeys;
+import net.minecraft.client.resources.language.I18n;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -53,17 +54,17 @@ public final class SchemaTooltip {
             return "≤ " + formatNum(m.group(1));
         }
         if ((m = LENGTH.matcher(s)).matches()) {
-            return "长度 ∈ [" + m.group(1) + ", " + m.group(2) + "]";
+            return I18n.get("ide.tooltip.length", m.group(1), m.group(2));
         }
         if ((m = SIZE_PATTERN.matcher(s)).matches()) {
-            return "个数 ∈ [" + m.group(1) + ", " + m.group(2) + "]";
+            return I18n.get("ide.tooltip.size_count", m.group(1), m.group(2));
         }
         if ((m = PATTERN.matcher(s)).matches()) {
             String inner = m.group(1);
             if (inner.length() > 24) {
                 inner = inner.substring(0, 24) + "…";
             }
-            return "匹配 /" + inner + "/";
+            return I18n.get("ide.tooltip.pattern", inner);
         }
         return s;
     }
@@ -118,12 +119,12 @@ public final class SchemaTooltip {
             int len = raw.length();
             int lo = Integer.parseInt(m.group(1)), hi = Integer.parseInt(m.group(2));
             if (len < lo || len > hi) {
-                return "长度 ∈ [" + lo + ", " + hi + "]";
+                return I18n.get("ide.tooltip.length", lo, hi);
             }
         } else if (kind == Kind.SIZE && (m = SIZE_PATTERN.matcher(constraint)).matches()) {
             int lo = Integer.parseInt(m.group(1)), hi = Integer.parseInt(m.group(2));
             if (count < lo || count > hi) {
-                return "个数 ∈ [" + lo + ", " + hi + "]";
+                return I18n.get("ide.tooltip.size_count", lo, hi);
             }
         }
         return null;

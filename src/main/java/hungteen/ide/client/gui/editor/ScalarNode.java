@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import hungteen.ide.common.codec.parser.SchemaKeys;
+import net.minecraft.client.resources.language.I18n;
 
 /** 标量节点：STRING/数字/资源定位/组件等，只有一个输入框。 */
 final class ScalarNode extends EditorFormNode {
@@ -76,7 +77,7 @@ final class ScalarNode extends EditorFormNode {
             String err = SchemaTooltip.checkConstraint(c.getAsString(), kind, raw, 0);
             if (err != null) {
                 invalid = true;
-                errorMessage = "值不满足约束 " + err;
+                errorMessage = I18n.get("ide.error.constraint", err);
                 return;
             }
         }

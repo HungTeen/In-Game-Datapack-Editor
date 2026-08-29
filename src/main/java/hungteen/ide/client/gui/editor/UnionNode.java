@@ -6,6 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import hungteen.ide.common.codec.parser.SchemaKeys;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -138,10 +139,11 @@ final class UnionNode extends EditorFormNode {
     @Override
     protected void appendTypeInfo(List<Component> lines) {
         if (schema.has(SchemaKeys.VARIANT_KEY)) {
-            lines.add(line("分派键: " + schema.get(SchemaKeys.VARIANT_KEY).getAsString(), ViewerStyle.COLOR_TYPE));
+            lines.add(line(I18n.get("ide.tooltip.variant_key", schema.get(SchemaKeys.VARIANT_KEY).getAsString()),
+                ViewerStyle.COLOR_TYPE));
         }
         if (!unionNames.isEmpty()) {
-            lines.add(line("类型(" + unionNames.size() + "): " + String.join(", ", unionNames),
+            lines.add(line(I18n.get("ide.tooltip.types", unionNames.size(), String.join(", ", unionNames)),
                 ViewerStyle.COLOR_ENUM));
         }
     }

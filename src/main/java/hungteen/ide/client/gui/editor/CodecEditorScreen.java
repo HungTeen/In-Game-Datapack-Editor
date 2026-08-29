@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -86,7 +87,7 @@ public class CodecEditorScreen extends Screen {
     private String status = "";
 
     public CodecEditorScreen(List<String> registryNames) {
-        super(Component.literal("Codec 编辑器"));
+        super(Component.translatable("ide.screen.editor.title"));
         this.registryNames = new ArrayList<>(registryNames);
         this.labelQueue = new LabelQueue();
         this.unionDropdown = new NodeDropdown<>(this, this::addRenderableWidget, this::removeWidget, this::rebuild);
@@ -106,7 +107,8 @@ public class CodecEditorScreen extends Screen {
         tooltipRows.clear();
 
         // 顶部：数据包类型下拉框按钮
-        Button typeButton = Button.builder(Component.literal("数据包类型: " + (selected.isEmpty() ? "(未选择)" : selected)),
+        String selectedText = selected.isEmpty() ? I18n.get("ide.screen.none") : selected;
+        Button typeButton = Button.builder(Component.translatable("ide.screen.type", selectedText),
                 b -> {
                     dropdownOpen = !dropdownOpen;
                     if (!dropdownOpen) {
@@ -125,7 +127,7 @@ public class CodecEditorScreen extends Screen {
         if (dropdownOpen) {
             if (searchBox == null) {
                 searchBox = new EditBox(this.font, ViewerStyle.LEFT_PADDING, TOP_OFFSET,
-                    TYPE_DROPDOWN_WIDTH, DROPDOWN_SEARCH_HEIGHT, Component.literal("搜索"));
+                    TYPE_DROPDOWN_WIDTH, DROPDOWN_SEARCH_HEIGHT, Component.translatable("ide.screen.search"));
                 searchBox.setMaxLength(64);
             }
             searchBox.setResponder(text -> {
@@ -193,23 +195,23 @@ public class CodecEditorScreen extends Screen {
     /** 重建主体区域：顶部工具条按钮（模式切换/路径/文件名/保存）+ 表单。 */
     private void rebuildBody() {
         // 模式切换
-        Button modeButton = Button.builder(Component.literal(jsonMode ? "表单模式" : "JSON 模式"), b -> {
+        Button modeButton = Button.builder(Component.translatable(jsonMode ? "ide.screen.form" : "ide.screen.json"), b -> {
             jsonMode = !jsonMode;
             rebuild();
         }).bounds(166, 4, 70, 14).build();
         addRenderableWidget(modeButton);
 
-        EditBox pathField = new EditBox(this.font, 244, 4, 80, 13, Component.literal("路径"));
+        EditBox pathField = new EditBox(this.font, 244, 4, 80, 13, Component.translatable("ide.screen.path"));
         pathField.setValue(savePath);
         pathField.setResponder(s -> savePath = s);
         addRenderableWidget(pathField);
 
-        EditBox fileNameField = new EditBox(this.font, 330, 4, 50, 13, Component.literal("文件名"));
+        EditBox fileNameField = new EditBox(this.font, 330, 4, 50, 13, Component.translatable("ide.screen.file"));
         fileNameField.setValue(saveFileName);
         fileNameField.setResponder(s -> saveFileName = s);
         addRenderableWidget(fileNameField);
 
-        Button saveButton = Button.builder(Component.literal("保存"), b -> save()).bounds(386, 4, 40, 14).build();
+        Button saveButton = Button.builder(Component.translatable("ide.screen.save"), b -> save()).bounds(386, 4, 40, 14).build();
         addRenderableWidget(saveButton);
 
         // 顶部下拉展开时隐藏主体
@@ -245,7 +247,7 @@ public class CodecEditorScreen extends Screen {
         // 保存路径与所选数据包类型对齐：datapack:<pack>/data/<命名空间>/<注册表路径>
         this.savePath = "datapack:htlib_editor/data/" + name.replace(':', '/');
         IDENetworkHandler.sendToServer(new RequestSchemaPacket(name));
-        status = "请求 " + name + " schema...";
+        status = I18n.get("ide.screen.request_schema", name);
         rebuild();
     }
 
@@ -257,10 +259,10 @@ public class CodecEditorScreen extends Screen {
             this.formScroll = 0;
             this.panX = 0;
             this.unionDropdown.close();
-            status = "已加载 " + selected + " schema";
+            status = I18n.get("ide.screen.loaded_schema", selected);
             rebuild();
         } catch (Exception e) {
-            status = "schema 解析失败: " + e.getMessage();
+            status = I18n.get("ide.screen.schema_error", e.getMessage());
         }
     }
 
@@ -272,7 +274,7 @@ public class CodecEditorScreen extends Screen {
             path = path + ".json";
         }
         IDENetworkHandler.sendToServer(new SaveDataPacket(selected, path, json));
-        status = "保存请求已发送: " + path;
+        status = I18n.get("ide.screen.save_sent", path);
     }
 
     private String collectJsonText() {
