@@ -5,7 +5,6 @@ import com.mojang.serialization.Decoder;
 import hungteen.htlib.api.interfaces.IHTCommonRegistry;
 import hungteen.htlib.api.interfaces.IHTCodecRegistry;
 import hungteen.htlib.api.interfaces.IHTRegistry;
-import hungteen.htlib.util.ReflectionUtil;
 import hungteen.ide.common.codec.parser.handler.DispatchCodecHandler;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -57,7 +56,7 @@ public final class DispatchCodecInspector {
     /** 取分派键名（typeKey），读不到用默认 "type"。 */
     public static String typeKey(Object codec) {
 
-        Object typeKey = ReflectionUtil.getField(codec, "typeKey");
+        Object typeKey = CodecReflection.getField(codec, "typeKey");
 
         return typeKey instanceof String s && !s.isEmpty() ? s : "type";
     }
@@ -75,9 +74,9 @@ public final class DispatchCodecInspector {
             return map;
         }
 
-        Object keyCodec = ReflectionUtil.getField(codec, "keyCodec");
+        Object keyCodec = CodecReflection.getField(codec, "keyCodec");
 
-        Object decoder = ReflectionUtil.getField(codec, "decoder");
+        Object decoder = CodecReflection.getField(codec, "decoder");
 
         if (!(decoder instanceof Function<?, ?> function)) {
             return map;
@@ -257,7 +256,7 @@ public final class DispatchCodecInspector {
                 return htRegistry;
             }
 
-            for (java.lang.reflect.Field field : ReflectionUtil.fields(current.getClass())) {
+            for (java.lang.reflect.Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 

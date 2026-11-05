@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import net.minecraft.client.resources.language.I18n;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,13 +51,13 @@ final class MapNode extends EditorFormNode {
             screen.addButton(cx, y, 20, "+", b -> {
                 mapKeys.add(EditorFormNode.create(keySchema(), "", new JsonPrimitive("")));
                 mapValues.add(EditorFormNode.create(valueSchema(), "", JsonNull.INSTANCE));
-                screen.rebuildForm();
+                screen.rebuild();
             });
             screen.addButton(cx + 22, y, 20, "-", b -> {
                 if (!mapKeys.isEmpty()) {
                     mapKeys.remove(mapKeys.size() - 1);
                     mapValues.remove(mapValues.size() - 1);
-                    screen.rebuildForm();
+                    screen.rebuild();
                 }
             });
         }
@@ -94,6 +95,28 @@ final class MapNode extends EditorFormNode {
             }
         }
         return obj;
+    }
+
+    @Override
+    protected List<EditorFormNode> validationChildren() {
+        List<EditorFormNode> children = new ArrayList<>(mapKeys);
+        children.addAll(mapValues);
+        return children;
+    }
+
+    @Override
+    protected void validateValue() {
+        invalid = false;
+        errorMessage = "";
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (EditorFormNode key : mapKeys) {
+            JsonElement current = key.collect();
+            if (!current.isJsonPrimitive() || !keys.add(current.getAsString())) {
+                invalid = true;
+                errorMessage = I18n.get("ide.error.map_keys");
+                return;
+            }
+        }
     }
 
     @Override

@@ -6,8 +6,9 @@
   "ide.screen.search": "搜索",
   "ide.screen.type_hint": "类型…",
   "ide.screen.form": "表单模式",
-  "ide.screen.json": "JSON 模式",
-  "ide.screen.path": "路径",
+  "ide.screen.json": "JSON 预览",
+  "ide.screen.resource_id_hint": "资源 ID，例如 mypack:examples/test；命名空间同时作为数据包目录名。",
+  "ide.screen.path": "资源 ID（命名空间:路径）",
   "ide.screen.file": "文件名",
   "ide.screen.save": "保存",
   "ide.screen.request_schema": "请求 %s schema...",
@@ -30,5 +31,15 @@
   "ide.tooltip.pattern": "匹配 /%s/",
   "ide.editor.none": "不使用",
   "ide.error.constraint": "值不满足约束 %s",
-  "ide.tree.polymorphic": "多态"
+  "ide.tree.polymorphic": "多态",
+  "ide.error.select_type": "请先选择数据包类型，并等待格式加载完成。",
+  "ide.error.resource_id": "请输入合法的资源 ID，例如 mypack:example。",
+  "ide.error.invalid_form": "请先修正标红的无效值，再保存。",
+  "ide.error.number": "请输入合法且未超出范围的 %s 数值。",
+  "ide.error.map_keys": "映射的键必须是标量，且不能重复。",
+  "ide.error.json_too_large": "文档超过了 %s 个 UTF-8 字节的保存上限。",
+  "ide.save.success": "已保存：%s。请重新加载数据包或重新进入世界以应用更改。",
+  "ide.save.failed": "保存失败：%s",
+  "ide.save.denied": "需要 2 级权限才能使用数据包编辑器。",
+  "ide.schema.failed": "无法加载格式：%s"
 }

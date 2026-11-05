@@ -4,8 +4,6 @@ import com.google.gson.JsonElement;
 import com.mojang.datafixers.DataFixUtils;
 import com.mojang.serialization.*;
 import com.mojang.serialization.codecs.*;
-import hungteen.htlib.util.ReflectionUtil;
-import hungteen.htlib.util.helper.CodecHelper;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.HolderSetCodec;
@@ -104,7 +102,7 @@ public final class CodecUnwrapper {
 
         if (isRecursive(codec)) {
 
-            Object supplier = ReflectionUtil.getField(codec, "wrapped");
+            Object supplier = CodecReflection.getField(codec, "wrapped");
 
             if (supplier instanceof Supplier<?> sup) {
 
@@ -126,13 +124,13 @@ public final class CodecUnwrapper {
          * Codec.of(encoder, decoder, name) 匿名包装（如 ExtraCodecs.catchDecoderException），
          * 结构字段 val$encoder / val$decoder / val$name。取其中是 Codec 的那一侧穿透。
          */
-        Object encoder = ReflectionUtil.getField(codec, "val$encoder");
+        Object encoder = CodecReflection.getField(codec, "val$encoder");
 
         if (encoder instanceof Codec<?>) {
             return encoder != codec ? encoder : codec;
         }
 
-        Object decoder = ReflectionUtil.getField(codec, "val$decoder");
+        Object decoder = CodecReflection.getField(codec, "val$decoder");
 
         if (decoder instanceof Codec<?>) {
             return decoder != codec ? decoder : codec;
@@ -207,7 +205,7 @@ public final class CodecUnwrapper {
             return direct;
         }
 
-        Object self = ReflectionUtil.getField(codec, "this$0");
+        Object self = CodecReflection.getField(codec, "this$0");
 
         if (self != null && self != codec) {
             return fieldName(self, seen);
@@ -227,21 +225,21 @@ public final class CodecUnwrapper {
             return null;
         }
 
-        Object name = ReflectionUtil.getField(codec, "name");
+        Object name = CodecReflection.getField(codec, "name");
 
         if (name instanceof String string) {
             return string;
         }
 
-        Object decoder = ReflectionUtil.getField(codec, "val$decoder");
+        Object decoder = CodecReflection.getField(codec, "val$decoder");
 
-        Object decodedName = decoder == null ? null : ReflectionUtil.getField(decoder, "name");
+        Object decodedName = decoder == null ? null : CodecReflection.getField(decoder, "name");
 
         if (decodedName instanceof String string) {
             return string;
         }
 
-        Object supplier = ReflectionUtil.getField(codec, "val$name");
+        Object supplier = CodecReflection.getField(codec, "val$name");
 
         String resolved = resolveSupplier(supplier);
 
@@ -351,7 +349,7 @@ public final class CodecUnwrapper {
                 result.add(current);
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -388,17 +386,17 @@ public final class CodecUnwrapper {
             return method;
         }
 
-        Object field = ReflectionUtil.getField(codec, "elementCodec");
+        Object field = CodecReflection.getField(codec, "elementCodec");
 
         if (field != null) {
             return field;
         }
 
-        Object decoder = ReflectionUtil.getField(codec, "val$decoder");
+        Object decoder = CodecReflection.getField(codec, "val$decoder");
 
         if (decoder != null) {
 
-            Object decoded = ReflectionUtil.getField(decoder, "elementCodec");
+            Object decoded = CodecReflection.getField(decoder, "elementCodec");
 
             if (decoded != null) {
                 return decoded;
@@ -429,7 +427,7 @@ public final class CodecUnwrapper {
                 continue;
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -481,7 +479,7 @@ public final class CodecUnwrapper {
                 return current;
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -557,7 +555,7 @@ public final class CodecUnwrapper {
                 continue;
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -599,7 +597,7 @@ public final class CodecUnwrapper {
 
             if (codec instanceof MapCodec<?> mc) {
 
-                DataResult<?> result = mc.decode(OPS, CodecHelper.emptyMapLike());
+                DataResult<?> result = mc.decode(OPS, MapLike.forMap(Collections.emptyMap(), OPS));
 
                 Optional<?> present = result.result();
 
@@ -631,7 +629,7 @@ public final class CodecUnwrapper {
             return method;
         }
 
-        return ReflectionUtil.getField(codec, "elementCodec");
+        return CodecReflection.getField(codec, "elementCodec");
     }
 
     /** 取 ListCodec 的 [minSize, maxSize]，读不到用全开默认值。 */
@@ -655,7 +653,7 @@ public final class CodecUnwrapper {
 
         if (minSize == null) {
 
-            Object field = ReflectionUtil.getField(codec, "minSize");
+            Object field = CodecReflection.getField(codec, "minSize");
 
             if (field instanceof Number number) {
                 minSize = number.intValue();
@@ -664,7 +662,7 @@ public final class CodecUnwrapper {
 
         if (maxSize == null) {
 
-            Object field = ReflectionUtil.getField(codec, "maxSize");
+            Object field = CodecReflection.getField(codec, "maxSize");
 
             if (field instanceof Number number) {
                 maxSize = number.intValue();
@@ -704,7 +702,7 @@ public final class CodecUnwrapper {
 
             Double max = null;
 
-            for (Field field : ReflectionUtil.fields(obj.getClass())) {
+            for (Field field : CodecReflection.fields(obj.getClass())) {
 
                 String name = field.getName();
 
@@ -744,7 +742,7 @@ public final class CodecUnwrapper {
 
             Double second = null;
 
-            for (Field field : ReflectionUtil.fields(obj.getClass())) {
+            for (Field field : CodecReflection.fields(obj.getClass())) {
 
                 try {
 
@@ -768,7 +766,7 @@ public final class CodecUnwrapper {
             }
         }
 
-        for (Field field : ReflectionUtil.fields(obj.getClass())) {
+        for (Field field : CodecReflection.fields(obj.getClass())) {
 
             try {
 
@@ -804,7 +802,7 @@ public final class CodecUnwrapper {
             return method;
         }
 
-        return ReflectionUtil.getField(codec, "keyCodec");
+        return CodecReflection.getField(codec, "keyCodec");
     }
 
     /** 基本类型 codec → SchemaType。 */
@@ -909,7 +907,7 @@ public final class CodecUnwrapper {
                 return current.getClass().getComponentType();
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -992,7 +990,7 @@ public final class CodecUnwrapper {
                 return registry;
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -1044,13 +1042,13 @@ public final class CodecUnwrapper {
                 }
             }
 
-            Object key = ReflectionUtil.getField(current, "registryKey");
+            Object key = CodecReflection.getField(current, "registryKey");
 
             if (key instanceof ResourceKey<?> resourceKey) {
                 return resourceKey;
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 
@@ -1211,7 +1209,7 @@ public final class CodecUnwrapper {
                 return current;
             }
 
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 

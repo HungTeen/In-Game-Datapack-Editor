@@ -108,6 +108,16 @@ public abstract class EditorFormNode {
     protected void validateValue() {
     }
 
+    /** Validate every active descendant before serializing a save request. */
+    public boolean hasErrors() {
+        validateValue();
+        return invalid || validationChildren().stream().anyMatch(EditorFormNode::hasErrors);
+    }
+
+    protected List<EditorFormNode> validationChildren() {
+        return List.of();
+    }
+
     /** 该节点是否"可选且当前未启用"（RECORD 收集时省略键）。 */
     public boolean isOptionalAndAbsent() {
         return false;
@@ -293,22 +303,6 @@ public abstract class EditorFormNode {
                 default -> JsonNull.INSTANCE;
             };
         }
-        return switch (type) {
-            case INT -> new com.google.gson.JsonPrimitive((int)parseDouble(text));
-            case LONG -> new com.google.gson.JsonPrimitive((long)parseDouble(text));
-            case FLOAT -> new com.google.gson.JsonPrimitive((float)parseDouble(text));
-            case DOUBLE -> new com.google.gson.JsonPrimitive(parseDouble(text));
-            case BYTE -> new com.google.gson.JsonPrimitive((byte)parseDouble(text));
-            case SHORT -> new com.google.gson.JsonPrimitive((short)parseDouble(text));
-            default -> new com.google.gson.JsonPrimitive(text);
-        };
-    }
-
-    protected static double parseDouble(String text) {
-        try {
-            return Double.parseDouble(text.trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return ScalarInput.parse(text, type);
     }
 }

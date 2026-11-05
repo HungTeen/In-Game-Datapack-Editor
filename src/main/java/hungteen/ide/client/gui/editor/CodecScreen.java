@@ -46,6 +46,12 @@ public abstract class CodecScreen extends Screen {
         }
     }
 
+    public static void onSchemaError(String registryName, Component message) {
+        if (Minecraft.getInstance().screen instanceof CodecScreen screen && screen.selected.equals(registryName)) {
+            screen.setStatusPersistent(message.getString());
+        }
+    }
+
     /**
      * 创建顶部类型补全输入框。
      */
@@ -150,14 +156,34 @@ public abstract class CodecScreen extends Screen {
         renderBackground(graphics);
         tickStatus();
         renderFormRegion(graphics, mouseX, mouseY, partialTick);
-        if (!status.isEmpty()) {
-            graphics.drawString(this.font, status, ViewerStyle.LEFT_PADDING,
-                this.height - ViewerStyle.STATUS_BOTTOM, ViewerStyle.COLOR_STATUS);
-        }
         super.render(graphics, mouseX, mouseY, partialTick);
+        renderStatus(graphics);
         renderOverlays(graphics, mouseX, mouseY, partialTick);
         // 补全面板画在最上层（不应被字段/控件遮挡）
         paintSelectors(graphics, mouseX, mouseY);
+    }
+
+    /** Keep long paths and validation messages readable without extending beyond the screen. */
+    private void renderStatus(GuiGraphics graphics) {
+        if (status.isEmpty()) {
+            return;
+        }
+        int x = ViewerStyle.LEFT_PADDING;
+        int textWidth = Math.max(1, this.width - x * 2);
+        String ellipsis = "…";
+        var lines = this.font.split(Component.literal(status), Math.max(1, textWidth - this.font.width(ellipsis)));
+        int count = Math.min(3, lines.size());
+        int lineHeight = this.font.lineHeight + 1;
+        int lastY = this.height - ViewerStyle.STATUS_BOTTOM;
+        int top = lastY - (count - 1) * lineHeight;
+        graphics.fill(x - 3, top - 3, this.width - x + 3, lastY + this.font.lineHeight + 3, 0xE0101010);
+        for (int i = 0; i < count; i++) {
+            graphics.drawString(this.font, lines.get(i), x, top + i * lineHeight, ViewerStyle.COLOR_STATUS);
+        }
+        if (lines.size() > count) {
+            graphics.drawString(this.font, ellipsis, x + this.font.width(lines.get(count - 1)), lastY,
+                ViewerStyle.COLOR_STATUS);
+        }
     }
 
     @Override

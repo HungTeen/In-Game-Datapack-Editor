@@ -55,6 +55,11 @@ final class ScalarNode extends EditorFormNode {
     protected void validateValue() {
         invalid = false;
         errorMessage = "";
+        if (ScalarInput.isNumeric(type()) && !ScalarInput.isValidNumber(value, type())) {
+            invalid = true;
+            errorMessage = I18n.get("ide.error.number", type().name());
+            return;
+        }
         if (!schema.has(SchemaKeys.CONSTRAINTS)) {
             return;
         }
