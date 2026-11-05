@@ -117,4 +117,9 @@ final class ListSetNode extends EditorFormNode {
             }
         }
     }
+
+    @Override
+    protected java.util.List<EditorFormNode> validationChildren() {
+        return listItems;
+    }
 }

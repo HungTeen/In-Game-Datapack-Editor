@@ -1,100 +1,84 @@
 package hungteen.ide.common.codec.editor;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.mojang.logging.LogUtils;
+import com.mojang.serialization.JsonOps;
 import hungteen.ide.common.codec.parser.CodecSchemaParser;
 import hungteen.ide.common.codec.parser.DataSchema;
 import hungteen.ide.common.codec.parser.SchemaPrinter;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.RegistryDataLoader;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
+import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Codec 编辑器的服务端逻辑：注册表列表 / schema 生成 / 保存文件。
- *
- * @author PangTeen
- * @program: HTLib
- * @create 2026/8/10 14:00
- **/
+/** Server-side registry discovery, schema generation and validated datapack saving. */
 public final class CodecEditorManager {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private CodecEditorManager() {
     }
 
-    /** 所有可编辑的数据包注册表名字。 */
     public static List<ResourceLocation> getRegistryNames() {
         return DatapackCodecs.getDatapackCodecs().stream()
-                .map(RegistryDataLoader.RegistryData::key)
-                .map(ResourceKey::location)
-                .toList();
+            .map(RegistryDataLoader.RegistryData::key)
+            .map(ResourceKey::location)
+            .toList();
     }
 
-    /** 解析某注册表 codec 为 schema JSON。 */
     public static Optional<JsonObject> getSchemaJson(String registryName) {
-        return DatapackCodecs.getCodec(parseName(registryName))
-                .map(codec -> {
-                    DataSchema schema = CodecSchemaParser.parse(codec);
-                    return SchemaPrinter.toJson(schema);
-                });
-    }
-
-    /**
-     * 保存 JSON 到指定路径。
-     *
-     * <p>路径规则：</p>
-     * <ul>
-     *   <li>{@code datapack:<pack>/<rel>} —— 保存到存档 datapack 目录
-     *       {@code saves/<world>/datapacks/<pack>/<rel>}（相对 world 解析）；</li>
-     *   <li>其余相对路径 —— 以服务器根目录为基准；</li>
-     *   <li>绝对路径 —— 原样使用。</li>
-     * </ul>
-     *
-     * @param server      服务器实例（用于定位世界 datapack 目录）
-     * @param targetPath  目标路径
-     * @param json        要写入的 JSON 文本
-     */
-    public static Optional<Path> saveJson(net.minecraft.server.MinecraftServer server, String targetPath, String json) {
-        // 校验 JSON 合法。
-        try {
-            JsonParser.parseString(json);
-        } catch (Exception e) {
+        ResourceLocation name = ResourceLocation.tryParse(registryName);
+        if (name == null) {
             return Optional.empty();
         }
+        return DatapackCodecs.getCodec(name).map(codec -> {
+            DataSchema schema = CodecSchemaParser.parse(codec);
+            return SchemaPrinter.toJson(schema);
+        });
+    }
+
+    /** Validate before writing; client resource IDs never become arbitrary server paths. */
+    public static SaveResult saveJson(MinecraftServer server, String registryName, String resourceId, String json) {
         try {
-            Path file = resolvePath(server, targetPath);
-            Path parent = file.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
+            ResourceLocation registry = ResourceLocation.tryParse(registryName);
+            ResourceLocation resource = ResourceLocation.tryParse(resourceId);
+            if (registry == null || resource == null) {
+                return SaveResult.failure("Invalid registry or resource identifier");
             }
-            Files.writeString(file, json, StandardCharsets.UTF_8);
-            return Optional.of(file);
-        } catch (IOException e) {
-            return Optional.empty();
+            var codec = DatapackCodecs.getCodec(registry);
+            if (codec.isEmpty()) {
+                return SaveResult.failure("Unknown datapack registry: " + registryName);
+            }
+            CodecJsonValidator.parseAndValidate(codec.get(), RegistryOps.create(JsonOps.INSTANCE, server.registryAccess()), json);
+            Path datapacksDirectory = server.getWorldPath(LevelResource.DATAPACK_DIR);
+            Path file = DatapackFileStorage.save(datapacksDirectory,
+                registry.getNamespace(), registry.getPath(), resource.getNamespace(), resource.getPath(), json);
+            String displayPath = "datapacks/" + datapacksDirectory.toRealPath().relativize(file).toString().replace('\\', '/');
+            return new SaveResult(true, Component.translatable("ide.save.success", displayPath));
+        } catch (IllegalArgumentException ex) {
+            return SaveResult.failure(ex.getMessage());
+        } catch (IOException | RuntimeException ex) {
+            LOGGER.warn("Could not save datapack resource {} in registry {}", resourceId, registryName, ex);
+            return SaveResult.failure(ex.getMessage());
         }
     }
 
-    private static Path resolvePath(net.minecraft.server.MinecraftServer server, String targetPath) {
-        if (targetPath.startsWith("datapack:")) {
-            String rel = targetPath.substring("datapack:".length());
-            Path worldDatapacks = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.DATAPACK_DIR);
-            return worldDatapacks.resolve(rel);
+    public record SaveResult(boolean success, Component message) {
+        public static SaveResult failure(String detail) {
+            String message = detail == null ? "Unknown error" : detail;
+            if (message.length() > 1024) {
+                message = message.substring(0, 1024) + "…";
+            }
+            return new SaveResult(false, Component.translatable("ide.save.failed", message));
         }
-        Path p = Paths.get(targetPath);
-        if (p.isAbsolute()) {
-            return p;
-        }
-        return server.getServerDirectory().toPath().resolve(targetPath);
-    }
-
-    private static net.minecraft.resources.ResourceLocation parseName(String name) {
-        return new net.minecraft.resources.ResourceLocation(name);
     }
 }

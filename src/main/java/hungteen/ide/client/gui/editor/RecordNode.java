@@ -32,7 +32,7 @@ final class RecordNode extends EditorFormNode {
 
     @Override
     public int height() {
-        int h = 0;
+        int h = StringUtils.isNotBlank(label) ? ROW_HEIGHT : 0;
         for (EditorFormNode c : recordChildren) {
             h += c.height();
         }
@@ -75,6 +75,11 @@ final class RecordNode extends EditorFormNode {
             obj.add(child.label, child.collect());
         }
         return obj;
+    }
+
+    @Override
+    protected List<EditorFormNode> validationChildren() {
+        return recordChildren;
     }
 
     @Override

@@ -5,8 +5,11 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
+
+import java.util.Optional;
 
 /**
  * @program: HTLib
@@ -15,6 +18,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
  **/
 public class IDENetworkHandler {
 
+    private static final String PROTOCOL_VERSION = "2";
     private static int id = 0;
 
     private static SimpleChannel CHANNEL;
@@ -22,17 +26,19 @@ public class IDENetworkHandler {
     public static void init() {
 
         CHANNEL =
-            NetworkRegistry.ChannelBuilder.named(IDEHelper.prefix("networking")).networkProtocolVersion(() -> "1.0")
-                .clientAcceptedVersions(s -> true).serverAcceptedVersions(s -> true).simpleChannel();
+            NetworkRegistry.ChannelBuilder.named(IDEHelper.prefix("networking")).networkProtocolVersion(() -> PROTOCOL_VERSION)
+                .clientAcceptedVersions(PROTOCOL_VERSION::equals).serverAcceptedVersions(PROTOCOL_VERSION::equals).simpleChannel();
 
         CHANNEL.registerMessage(getId(), OpenCodecPacket.class, OpenCodecPacket::encode, OpenCodecPacket::new,
-            OpenCodecPacket.Handler::onMessage);
+            OpenCodecPacket.Handler::onMessage, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(getId(), RequestSchemaPacket.class, RequestSchemaPacket::encode,
-            RequestSchemaPacket::new, RequestSchemaPacket.Handler::onMessage);
+            RequestSchemaPacket::new, RequestSchemaPacket.Handler::onMessage, Optional.of(NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(getId(), SchemaResponsePacket.class, SchemaResponsePacket::encode,
-            SchemaResponsePacket::new, SchemaResponsePacket.Handler::onMessage);
+            SchemaResponsePacket::new, SchemaResponsePacket.Handler::onMessage, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(getId(), SaveDataPacket.class, SaveDataPacket::encode, SaveDataPacket::new,
-            SaveDataPacket.Handler::onMessage);
+            SaveDataPacket.Handler::onMessage, Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(getId(), SaveResultPacket.class, SaveResultPacket::encode, SaveResultPacket::new,
+            SaveResultPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
     public static <MSG> void sendToServer(MSG msg) {

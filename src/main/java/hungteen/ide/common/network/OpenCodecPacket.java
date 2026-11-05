@@ -4,6 +4,8 @@ import hungteen.ide.client.gui.editor.CodecEditorScreen;
 import hungteen.ide.client.gui.editor.CodecViewerScreen;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.ArrayList;
@@ -55,13 +57,13 @@ public class OpenCodecPacket {
 
     public static class Handler {
         public static void onMessage(OpenCodecPacket message, Supplier<NetworkEvent.Context> ctx) {
-            ctx.get().enqueueWork(() -> {
+            ctx.get().enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
                 if (message.mode == Mode.EDITOR) {
                     CodecEditorScreen.open(message.registryNames);
                 } else {
                     CodecViewerScreen.open(message.registryNames, message.preselect);
                 }
-            });
+            }));
             ctx.get().setPacketHandled(true);
         }
     }

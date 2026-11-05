@@ -1,7 +1,6 @@
 package hungteen.ide.common.codec.parser.handler;
 
 import com.mojang.serialization.MapCodec;
-import hungteen.htlib.util.ReflectionUtil;
 import hungteen.ide.common.codec.parser.*;
 
 import java.lang.reflect.Field;
@@ -42,13 +41,13 @@ public final class RecordCodecHandler implements CodecSchemaHandler {
         DataSchema schema = new DataSchema(SchemaType.RECORD);
 
         // 记录构建器持有 encoder / decoder 树，字段 MapCodec 从 encoder 侧收集。
-        Object builder = ReflectionUtil.getField(codec, "val$builder");
+        Object builder = CodecReflection.getField(codec, "val$builder");
 
         if (builder == null) {
             return schema;
         }
 
-        Object encoder = ReflectionUtil.getField(builder, "encoder");
+        Object encoder = CodecReflection.getField(builder, "encoder");
 
         Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -83,7 +82,7 @@ public final class RecordCodecHandler implements CodecSchemaHandler {
                      * （非字段 MapCodec）。它们仍属于当前记录的字段装配，需要继续下钻
                      * 才能收集到顶层字段（否则如 Biome 只解析出最后一个字段）。
                      */
-                    for (Field field : ReflectionUtil.fields(current.getClass())) {
+                    for (Field field : CodecReflection.fields(current.getClass())) {
 
                         try {
 
@@ -106,7 +105,7 @@ public final class RecordCodecHandler implements CodecSchemaHandler {
             }
 
             // 非 MapCodec（可能是 lambda / 包装对象）：继续深入其字段。
-            for (Field field : ReflectionUtil.fields(current.getClass())) {
+            for (Field field : CodecReflection.fields(current.getClass())) {
 
                 try {
 

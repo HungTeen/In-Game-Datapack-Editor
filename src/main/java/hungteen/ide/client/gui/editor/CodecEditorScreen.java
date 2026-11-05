@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -18,6 +19,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Codec 编辑器界面。
@@ -36,13 +38,11 @@ public class CodecEditorScreen extends CodecScreen {
     }
 
     private static final int TOP_OFFSET = 20;
-    /** 顶部类型输入框宽度（编辑器工具条更紧凑）。 */
-    private static final int TYPE_DROPDOWN_WIDTH = 150;
 
     private boolean jsonMode = false;
     private JsonObject schema;
     private EditorFormNode formRoot;
-    private String saveRegistryName;
+    private String saveRegistryName = "";
     private int jsonScroll = 0;
     private int formScroll = 0;
     private int panX = 0;
@@ -66,8 +66,9 @@ public class CodecEditorScreen extends CodecScreen {
     @Override
     protected TypeSelector createTypeSelector() {
         List<String> names = registryNames.stream().map(ResourceLocation::toString).toList();
+        EditorToolbarLayout layout = EditorToolbarLayout.forWidth(this.width);
         return new TypeSelector(this, this::addRenderableWidget,
-            ViewerStyle.LEFT_PADDING, 4, TYPE_DROPDOWN_WIDTH, 13, TOP_OFFSET, names, this::select);
+            layout.typeX(), 4, layout.typeWidth(), 13, TOP_OFFSET, names, this::select);
     }
 
     /**
@@ -107,23 +108,28 @@ public class CodecEditorScreen extends CodecScreen {
      * 重建主体区域：顶部工具条按钮（模式切换/路径/文件名/保存）+ 表单。
      */
     private void rebuildBody() {
+        EditorToolbarLayout layout = EditorToolbarLayout.forWidth(this.width);
         // 模式切换按钮
         Button modeButton =
             Button.builder(Component.translatable(jsonMode ? "ide.screen.form" : "ide.screen.json"), b -> {
                 jsonMode = !jsonMode;
                 rebuild();
-            }).bounds(166, 4, 70, 14).build();
+            }).bounds(layout.modeX(), 4, layout.modeWidth(), 14).build();
         addRenderableWidget(modeButton);
 
         // 注册名输入框
-        EditBox registryNameField = new EditBox(this.font, 244, 4, 80, 13, Component.translatable("ide.screen.path"));
+        EditBox registryNameField = new EditBox(this.font, layout.resourceX(), 4, layout.resourceWidth(), 13,
+            Component.translatable("ide.screen.path"));
+        registryNameField.setMaxLength(SaveDataPacket.MAX_ID_LENGTH);
+        registryNameField.setHint(Component.literal("pack:path"));
+        registryNameField.setTooltip(Tooltip.create(Component.translatable("ide.screen.resource_id_hint")));
         registryNameField.setValue(saveRegistryName);
         registryNameField.setResponder(s -> saveRegistryName = s);
         addRenderableWidget(registryNameField);
 
         // 保存按钮
         Button saveButton = Button.builder(Component.translatable("ide.screen.save"), b -> save())
-            .bounds(386, 4, 40, 14).build();
+            .bounds(layout.saveX(), 4, layout.saveWidth(), 14).build();
         addRenderableWidget(saveButton);
 
         // 顶部下拉展开时隐藏主体
@@ -179,26 +185,40 @@ public class CodecEditorScreen extends CodecScreen {
      * 保存：发送到服务端。
      */
     private void save() {
-        String json = collectJsonText();
-        if (StringUtils.isAnyBlank(this.selected, this.saveRegistryName)) {
-            // TODO 失败
+        if (StringUtils.isBlank(this.selected) || formRoot == null) {
+            setStatusPersistent(I18n.get("ide.error.select_type"));
             return;
         }
-        if (!ResourceLocation.isValidResourceLocation(this.saveRegistryName)) {
-            // TODO 非法注册名
+        if (StringUtils.isBlank(this.saveRegistryName) || !ResourceLocation.isValidResourceLocation(this.saveRegistryName)) {
+            setStatusPersistent(I18n.get("ide.error.resource_id"));
             return;
         }
         ResourceLocation registryName = ResourceLocation.tryParse(this.saveRegistryName);
         ResourceLocation registryType = ResourceLocation.tryParse(this.selected);
         if (ObjectUtils.anyNull(registryName, registryType)) {
-            // TODO 非法
+            setStatusPersistent(I18n.get("ide.error.resource_id"));
             return;
         }
-        // 保存路径与所选数据包类型对齐：datapack:<pack>/data/<命名空间>/<注册表路径>
-        String path = String.format("datapack:%s/data/%s/%s/%s.json", registryName.getNamespace(), registryType.getNamespace(),
-            registryType.getPath(), registryName.getPath());
-        IDENetworkHandler.sendToServer(new SaveDataPacket(selected, path, json));
-        setStatusPersistent(I18n.get("ide.screen.save_sent", path));
+        if (formRoot.hasErrors()) {
+            setStatusPersistent(I18n.get("ide.error.invalid_form"));
+            return;
+        }
+        String json = collectJsonText();
+        if (json.getBytes(StandardCharsets.UTF_8).length > SaveDataPacket.MAX_JSON_BYTES) {
+            setStatusPersistent(I18n.get("ide.error.json_too_large", SaveDataPacket.MAX_JSON_BYTES));
+            return;
+        }
+        IDENetworkHandler.sendToServer(new SaveDataPacket(selected, registryName.toString(), json));
+        setStatusPersistent(I18n.get("ide.screen.save_sent", registryName));
+    }
+
+    /** Apply the server acknowledgement only to the document that initiated the request. */
+    public static void onSaveResult(String registryName, String resourceId, boolean success, Component message) {
+        if (Minecraft.getInstance().screen instanceof CodecEditorScreen screen
+            && screen.selected.equals(registryName)
+            && resourceId.equals(String.valueOf(ResourceLocation.tryParse(screen.saveRegistryName)))) {
+            screen.setStatusPersistent(message.getString());
+        }
     }
 
     private String collectJsonText() {
@@ -236,6 +256,7 @@ public class CodecEditorScreen extends CodecScreen {
 
     public EditBox addEditBox(int x, int y, int width, String value, Consumer<String> onChanged) {
         EditBox box = new EditBox(this.font, x, y, width, 12, Component.literal(""));
+        box.setMaxLength(SaveDataPacket.MAX_JSON_LENGTH);
         box.setValue(value);
         box.setResponder(onChanged);
         addRenderableWidget(box);

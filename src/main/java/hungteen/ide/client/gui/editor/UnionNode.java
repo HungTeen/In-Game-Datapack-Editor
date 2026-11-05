@@ -22,7 +22,7 @@ final class UnionNode extends EditorFormNode {
     private int unionIndex = 0;
 
     UnionNode(JsonObject schema, String label, JsonElement value) {
-        super(schema, DEFAULT_VARIANT_KEY, value);
+        super(schema, label, value);
     }
 
     @Override
@@ -80,7 +80,9 @@ final class UnionNode extends EditorFormNode {
             int cx = x + LABEL_WIDTH;
             int cw = Math.max(CONTROL_MIN_WIDTH, Math.min(width - LABEL_WIDTH, CONTROL_WIDTH));
             // 渲染 type 行
-            fieldLabel(screen, x, y);
+            String discriminator = schema.has(SchemaKeys.VARIANT_KEY)
+                ? schema.get(SchemaKeys.VARIANT_KEY).getAsString() : DEFAULT_VARIANT_KEY;
+            fieldLabelText(screen, x, y, label.isEmpty() ? discriminator : label, fieldLabelColor());
             screen.addTooltipRow(x, y, cx + cw - x, ROW_HEIGHT, tooltipLines());
             y += ROW_HEIGHT;
             EditorFormNode selected = unionVariants.get(unionIndex);
@@ -132,7 +134,11 @@ final class UnionNode extends EditorFormNode {
             return;
         }
         unionIndex = idx;
-        unionVariants.get(idx).load(JsonNull.INSTANCE);
+    }
+
+    @Override
+    protected List<EditorFormNode> validationChildren() {
+        return unionVariants.isEmpty() ? List.of() : List.of(unionVariants.get(unionIndex));
     }
 
     @Override

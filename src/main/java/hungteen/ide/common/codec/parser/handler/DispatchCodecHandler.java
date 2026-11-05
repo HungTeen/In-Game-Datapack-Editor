@@ -1,6 +1,5 @@
 package hungteen.ide.common.codec.parser.handler;
 
-import hungteen.htlib.util.ReflectionUtil;
 import hungteen.ide.common.codec.parser.*;
 
 import java.util.Map;
@@ -42,7 +41,7 @@ public final class DispatchCodecHandler implements CodecSchemaHandler {
         schema.variantKey(DispatchCodecInspector.typeKey(codec));
 
         // 类型值的 codec（枚举 / 注册表引用）→ key Schema。
-        Object keyCodec = ReflectionUtil.getField(codec, "keyCodec");
+        Object keyCodec = CodecReflection.getField(codec, "keyCodec");
 
         if (keyCodec != null) {
 

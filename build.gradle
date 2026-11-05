@@ -68,8 +68,15 @@ minecraft {
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
-    flatDir {
-        dir 'D:\\Projects\\Maven\\hungteen\\htlib\\HTLib'
+    mavenCentral()
+    maven {
+        name = 'CurseMaven'
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
+    // Optional local HTLib development builds; no machine-specific path is required.
+    if (providers.gradleProperty('htlib_local_dir').isPresent()) {
+        flatDir { dirs providers.gradleProperty('htlib_local_dir').get() }
     }
 }
 
@@ -78,8 +85,19 @@ dependencies {
 
 //    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
-//    implementation fg.deobf("curse.maven:htlib-794622:${htlib_version}")
-    implementation fg.deobf("hungteen:htlib:${minecraft_version}-${htlib_local_version}")
+    if (providers.gradleProperty('htlib_local_dir').isPresent()) {
+        implementation fg.deobf("hungteen:htlib:${minecraft_version}-${htlib_local_version}")
+    } else {
+        implementation fg.deobf("curse.maven:hungteens-lib-794622:${htlib_version}")
+    }
+
+    testImplementation platform('org.junit:junit-bom:5.10.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
 }
 
 //mixin {
@@ -108,7 +126,7 @@ tasks.named('processResources', ProcessResources).configure {
             forge_version: forge_version, forge_version_range: forge_version_range, loader_version_range: loader_version_range,
             mod_id: mod_id, mod_name: mod_name, mod_display_name: mod_display_name, mod_version: mod_version, mod_authors: mod_authors,
             mod_license: mod_license, mod_logo_file: mod_logo_file, mod_description: mod_description,
-            mod_issue_url: mod_issue_url, mod_update_url: mod_update_url, mod_display_url: mod_display_url,
+            mod_issue_url: mod_issue_url, mod_display_url: mod_display_url,
             htlib_version_range: htlib_version_range
     ]
     inputs.properties replaceProperties

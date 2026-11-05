@@ -62,9 +62,11 @@ public TypeSelector(Screen host, Consumer<AbstractWidget> addWidget, int x, int 
     public EditBox addToScreen(Font font) {
         if (box == null) {
             box = new EditBox(font, listLeft, boxY, listRight - listLeft, this.height, Component.translatable("ide.screen.type"));
-            box.setMaxLength(128);
+            box.setMaxLength(256);
             box.setSuggestion(I18n.get("ide.screen.type_hint"));
             box.setResponder(this::onTextChanged);
+            // setValue may run before the first widget is created (preselected viewer / resize).
+            setValue(current);
         }
         addWidget.accept(box);
         return box;

@@ -6,8 +6,9 @@
   "ide.screen.search": "Search",
   "ide.screen.type_hint": "type…",
   "ide.screen.form": "Form mode",
-  "ide.screen.json": "JSON mode",
-  "ide.screen.path": "Path",
+  "ide.screen.json": "JSON preview",
+  "ide.screen.resource_id_hint": "Resource ID, e.g. mypack:examples/test. The namespace is also the datapack folder name.",
+  "ide.screen.path": "Resource ID (namespace:path)",
   "ide.screen.file": "File name",
   "ide.screen.save": "Save",
   "ide.screen.request_schema": "Requesting %s schema...",
@@ -30,5 +31,15 @@
   "ide.tooltip.pattern": "Matches /%s/",
   "ide.editor.none": "None",
   "ide.error.constraint": "Value violates constraint %s",
-  "ide.tree.polymorphic": "Polymorphic"
+  "ide.tree.polymorphic": "Polymorphic",
+  "ide.error.select_type": "Select a datapack type and wait for its schema before saving.",
+  "ide.error.resource_id": "Enter a valid resource ID, for example mypack:example.",
+  "ide.error.invalid_form": "Fix the highlighted invalid values before saving.",
+  "ide.error.number": "Enter a valid %s number within its supported range.",
+  "ide.error.map_keys": "Map keys must be scalar values and must not repeat.",
+  "ide.error.json_too_large": "The document exceeds the save limit of %s UTF-8 bytes.",
+  "ide.save.success": "Saved: %s. Reload or reopen the world to apply changes.",
+  "ide.save.failed": "Save failed: %s",
+  "ide.save.denied": "You need permission level 2 to use the datapack editor.",
+  "ide.schema.failed": "Could not load schema: %s"
 }
